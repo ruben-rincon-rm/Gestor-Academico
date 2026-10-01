@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gestor Académico RM - Sistema Institucional y Carnet Digital</title>
+    <meta name="description" content="Gestor Académico RM - Sistema Institucional, gestión académica, carnet digital, escáner QR, asistencia y evaluaciones." />
+    <meta property="og:title" content="Gestor Académico RM" />
+    <meta property="og:description" content="Gestor Académico RM - Sistema Institucional, gestión académica, carnet digital, escáner QR, asistencia y evaluaciones." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .module-btn { transition: all 0.2s ease-in-out; }
+        .module-active { transform: scale(1.05); z-index: 10; border-width: 2px; }
+        .module-inactive { opacity: 0.6; filter: grayscale(40%); }
+        
+        .mode-btn { min-width: 90px; }
+        .h-80-pct { height: 80%; }
+        .max-h-200 { max-height: 200px; }
+        .min-h-250 { min-height: 250px; }
+        .animate-slide-2 { animation: slideIn 0.2s ease-out forwards; }
+        .animate-slide-3 { animation: slideIn 0.3s ease-out forwards; }
+        .text-10px { font-size: 10px; }
+        .text-11px { font-size: 11px; }
+
+        .carnet-container { width: 320px; height: 520px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; border: 1px solid #e5e7eb; margin: 0 auto; }
+        .carnet-waves { position: absolute; top: 0; left: 0; width: 100%; height: 120px; z-index: 0; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden relative">
+
+    <header id="main-header" class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center z-10 relative transition-colors duration-300">
+        <div class="flex items-center gap-3">
+            <div id="header-logo-container" class="hidden bg-white p-1 rounded-lg w-12 h-12 flex items-center justify-center shadow-sm">
+                <img id="header-logo" src="" alt="Logo" class="max-w-full max-h-full object-contain">
+            </div>
+            <i id="header-default-icon" class="fas fa-university text-2xl"></i>
+            <div class="flex flex-col">
+                <h1 id="header-inst-name" class="text-lg font-bold leading-tight uppercase tracking-wide">Gestor Académico RM</h1>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-white opacity-90 font-medium" id="current-staff-display">Sin iniciar sesión</span>
+                    <span id="firebase-status-badge" class="text-[10px] bg-blue-800 text-blue-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> BD Sincronizada
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="text-sm font-medium bg-black bg-opacity-20 px-3 py-1 rounded-full shadow-inner border border-white border-opacity-20">
+            <span id="date-display">Cargando...</span>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto relative bg-gray-50">
+        <div id="toast-container" class="fixed top-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+        <div id="view-scanner" class="p-4 flex flex-col gap-4 h-full relative hidden">
+            
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2" id="modules-container">
+                <h3 class="text-11px font-black text-gray-400 uppercase tracking-widest text-center">Módulo de trabajo</h3>
+                
+                <div class="flex gap-2 overflow-x-auto snap-x hide-scrollbar pb-2 pt-1 px-1" id="btn-group-modules">
+                    <button data-mode="asistencia" class="module-btn module-active mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-green-500 text-white shadow-md flex flex-col items-center justify-center snap-center border-green-600"><i class="fas fa-user-check mb-1 text-lg"></i>Asistencia</button>
+                    <button data-mode="evaluacion" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-blue-400 text-white shadow-md flex flex-col items-center justify-center snap-center border-blue-500"><i class="fas fa-star mb-1 text-lg"></i>Evaluar</button>
+                    <button data-mode="salida" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-gray-500 text-white shadow-md flex flex-col items-center justify-center snap-center border-gray-600"><i class="fas fa-door-open mb-1 text-lg" id="icon-salida"></i><span id="text-salida">Salidas</span></button>
+                    <button data-mode="prestamo" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-yellow-500 text-white shadow-md flex flex-col items-center justify-center snap-center border-yellow-600"><i class="fas fa-basketball-ball mb-1 text-lg"></i>Préstamos</button>
+                    <button data-mode="pruebas" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-purple-600 text-white shadow-md flex flex-col items-center justify-center snap-center border-purple-700"><i class="fas fa-stopwatch mb-1 text-lg"></i>Pruebas</button>
+                    <button data-mode="pae" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-black bg-blue-600 text-white shadow-md flex flex-col items-center justify-center snap-center border-blue-700"><i class="fas fa-utensils mb-1 text-lg"></i>PAE</button>
+                    <button data-mode="clase_ef" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-indigo-600 text-white shadow-md flex flex-col items-center justify-center snap-center border-indigo-700"><i class="fas fa-running mb-1 text-lg"></i>Ed. Física</button>
+                    <button data-mode="novedad" class="module-btn module-inactive mode-btn flex-1 px-2 py-3 rounded-lg text-sm font-bold bg-red-500 text-white shadow-md flex flex-col items-center justify-center snap-center border-red-600"><i class="fas fa-exclamation-triangle mb-1 text-lg"></i>Novedades</button>
+                </div>
+            </div>
+
+            <!-- PANEL EXCLUSIVO MASTER 2000 (Sincronizado con la nube) -->
+            <div id="eval-master-subtoolbar" class="hidden bg-blue-50 border-2 border-blue-300 p-4 rounded-xl flex-col gap-3 shadow-sm mb-2">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-xs font-black text-blue-800 uppercase tracking-wider"><i class="fas fa-cloud-upload-alt mr-1"></i> Interfaz Master 2000 (Nube)</h4>
+                    <button id="btn-reset-master" class="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded hidden hover:bg-red-200"><i class="fas fa-trash-alt"></i> Limpiar</button>
+                </div>
+                
+                <div id="master-upload-wrapper" class="flex flex-col gap-2">
+                    <label class="bg-white border-2 border-blue-400 text-blue-700 px-3 py-3 rounded-lg text-sm font-bold cursor-pointer hover:bg-blue-100 shadow-sm flex items-center justify-center transition-colors">
+                        <i class="fas fa-upload mr-2 text-lg"></i> 1. Cargar Planilla Master Original
+                        <input type="file" id="excel-master" class="hidden" accept=".xlsx, .xls">
+                    </label>
+                </div>
+
+                <div id="master-actions-wrapper" class="hidden flex-col gap-2">
+                    <div class="bg-white border border-blue-200 p-2 rounded-lg text-center flex flex-col items-center justify-center">
+                        <div class="text-xs text-gray-500 font-bold w-full truncate" id="master-file-name-display">Archivo.xlsx</div>
+                        <div class="text-sm font-black text-green-600 mt-1" id="master-grades-counter">Notas en esta sesión: 0</div>
+                    </div>
+                    <button id="btn-download-master" class="bg-blue-600 text-white w-full py-3 rounded-lg text-sm font-black shadow-md hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-download mr-2 text-lg"></i> Exportar Planilla para Master
+                    </button>
+                </div>
+            </div>
+
+            <!-- PANEL EDUCACIÓN FÍSICA -->
+            <div id="ef-subtoolbar" class="hidden bg-indigo-50 border-2 border-indigo-300 p-3 rounded-xl flex flex-col gap-2 shadow-sm mb-2">
+                <span class="text-xs font-bold text-indigo-900 uppercase tracking-wider text-center" id="ef-phase-label">Fase: 1. Asistencia en Salón</span>
+                <div class="grid grid-cols-4 gap-2">
+                    <button data-ef-phase="asistencia" class="ef-phase-btn bg-indigo-600 text-white py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-user-check mb-0.5"></i>1. Asiste</button>
+                    <button data-ef-phase="evaluacion" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-star mb-0.5"></i>2. Evaluar</button>
+                    <button data-ef-phase="prestamo" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-basketball-ball mb-0.5"></i>3. Préstamo</button>
+                    <button data-ef-phase="salida" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-door-open mb-0.5"></i>4. Salida</button>
+                    <button data-ef-phase="novedad" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-exclamation-triangle mb-0.5"></i>5. Novedad</button>
+                    <button data-ef-phase="regreso" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"><i class="fas fa-door-closed mb-0.5"></i>6. Regreso</button>
+                    <button data-ef-phase="devolucion" class="ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center col-span-2"><i class="fas fa-undo mb-0.5"></i>7. Devolución</button>
+                </div>
+            </div>
+
+            <!-- Panel de Préstamos Activos -->
+            <div id="loan-status-bar" class="hidden bg-yellow-50 border-2 border-yellow-400 p-4 rounded-xl flex-col gap-3 shadow-md mb-2">
+                <div><span class="text-sm text-yellow-900 block leading-tight" id="loan-status-text">Esperando estudiante...</span></div>
+                <button id="btn-finish-loan" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center w-full"><i class="fas fa-check-circle mr-2 text-lg"></i>Terminar Préstamos (Siguiente Alumno)</button>
+            </div>
+            
+            <button id="btn-view-active-loans" class="hidden bg-yellow-600 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:bg-yellow-700 transition-colors w-full border-b-4 border-yellow-800"><i class="fas fa-list-ul mr-2"></i>Ver Préstamos Activos</button>
+
+            <!-- CÁMARA Y REGISTRO MANUAL -->
+            <div class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center border border-gray-100 relative">
+                
+                <div id="reader-container" class="w-full bg-black rounded-lg min-h-250 flex flex-col items-center justify-center relative overflow-hidden mb-4" style="height: 250px;">
+                    <div id="reader" class="absolute inset-0 w-full h-full"></div>
+                    <div id="camera-overlay" class="absolute inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-10">
+                        <i class="fas fa-camera text-4xl text-gray-500 mb-4"></i>
+                        <button id="btn-activate-camera" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-500 transition-transform transform hover:scale-105 border-b-4 border-blue-800">
+                            Activar Escáner QR
+                        </button>
+                    </div>
+                    <button id="btn-stop-camera" class="hidden absolute top-2 right-2 bg-red-600 text-white w-10 h-10 rounded-full shadow-lg z-20 hover:bg-red-700 flex items-center justify-center border-2 border-white">
+                        <i class="fas fa-power-off"></i>
+                    </button>
+                </div>
+                
+                <div class="relative flex gap-2 w-full">
+                    <div class="relative flex-1">
+                        <input type="text" id="manual-id" placeholder="Buscar por Nombre, Documento o Matrícula..." autocomplete="off" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 bg-gray-50 font-bold text-sm text-center">
+                        <div id="search-dropdown" class="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl mt-1 hidden max-h-60 overflow-y-auto divide-y divide-gray-100 text-left"></div>
+                    </div>
+                    <button id="btn-manual-submit" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm"><i class="fas fa-search"></i></button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm p-4 flex-1 border border-gray-100 flex flex-col">
+                <label id="btn-upload-pae-staff" class="hidden mb-4 bg-green-50 text-green-700 border border-green-300 font-bold py-3 px-4 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center w-full shadow-sm cursor-pointer text-sm">
+                    <i class="fas fa-file-excel mr-2"></i>Cargar Base PAE VIP (Excel)
+                    <input type="file" id="excel-pae-staff" class="hidden" accept=".xlsx, .xls">
+                </label>
+
+                <button id="btn-open-teacher-reports" class="mb-4 bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold py-2 px-4 rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center w-full shadow-sm">
+                    <i class="fas fa-chart-bar mr-2"></i>Descargar Mis Reportes / Matriz
+                </button>
+
+                <div class="flex justify-between items-center mb-3 border-b pb-2">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Registros de tu turno</h3>
+                    <span class="text-xs bg-green-100 text-green-800 px-3 py-1 rounded-full font-bold shadow-sm" id="counter-today">0 registros</span>
+                </div>
+                <div id="recent-scans" class="flex flex-col gap-2 overflow-y-auto max-h-200">
+                    <div class="text-gray-400 text-center text-sm py-4"><i class="fas fa-list text-2xl mb-2 text-gray-200"></i><br>Sin registros.</div>
+                </div>
+                
+                <div class="mt-4 flex flex-col gap-2 pt-2 border-t">
+                    <button id="btn-open-change-password" class="w-full text-blue-700 text-sm font-bold py-3 mb-2 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"><i class="fas fa-key mr-2"></i>Cambiar Mi Contraseña</button>
+                    <button id="btn-staff-logout" class="w-full text-red-600 text-sm font-bold py-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar Turno</button>
+                </div>
+            </div>
+            
+            <!-- Modal Reportes Docente -->
+            <div id="modal-docente-reportes" class="hidden absolute inset-0 bg-black bg-opacity-80 z-40 flex items-center justify-center p-4">
+                <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col relative animate-slide-2">
+                    <button id="btn-close-docente-reportes" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
+                    <h3 class="text-lg font-bold text-indigo-700 mb-4 text-center"><i class="fas fa-table mr-2"></i>Generar Reportes</h3>
+                    
+                    <div class="flex gap-2 mb-3">
+                        <div class="flex-1"><label class="text-10px font-bold text-gray-500 mb-1 uppercase tracking-wider block">Desde</label><input type="date" id="teacher-report-date-start" class="w-full border border-gray-300 rounded-lg px-2 py-2 bg-gray-50 font-medium text-xs"></div>
+                        <div class="flex-1"><label class="text-10px font-bold text-gray-500 mb-1 uppercase tracking-wider block">Hasta</label><input type="date" id="teacher-report-date-end" class="w-full border border-gray-300 rounded-lg px-2 py-2 bg-gray-50 font-medium text-xs"></div>
+                    </div>
+                    
+                    <label class="text-xs font-bold text-gray-500 mb-1">Módulo a Descargar</label>
+                    <select id="teacher-report-type" class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-gray-50 font-medium text-sm">
+                        <option value="consolidado_super" class="font-black text-blue-700">📊 Súper Consolidado (Todos los Módulos)</option>
+                        <option value="evaluacion">📝 Notas de Evaluación (Mis Clases)</option>
+                        <option value="asistencia">✅ Matriz de Asistencia (Sábana)</option>
+                        <option value="pruebas">⏱️ Tiempos de Pruebas Físicas</option>
+                        <option value="pae">🍽️ Control PAE</option>
+                        <option value="salida">🚪 Salidas / Portería</option>
+                        <option value="prestamo">🏀 Préstamos</option>
+                        <option value="novedad">⚠️ Novedades</option>
+                    </select>
+
+                    <label class="text-xs font-bold text-gray-500 mb-1">Grupo a Evaluar</label>
+                    <select id="teacher-report-group" class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-5 bg-gray-50 font-medium text-sm"></select>
+
+                    <button id="btn-download-teacher" class="bg-indigo-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-md transition-colors w-full flex items-center justify-center"><i class="fas fa-file-excel mr-2"></i>Descargar Excel</button>
+                </div>
+            </div>
+
+            <!-- Modal Evaluación Visual -->
+            <div id="modal-evaluacion" class="hidden absolute inset-0 bg-black bg-opacity-80 z-40 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm flex flex-col animate-slide-2 items-center">
+                    <h3 class="text-xl font-black text-blue-500 mb-1"><i class="fas fa-star mr-2"></i>Calificar Estudiante</h3>
+                    <p id="eval-student-name" class="font-bold text-gray-800 text-center text-sm mb-4 bg-gray-100 w-full p-2 rounded"></p>
+                    
+                    <select id="modal-eval-activity-select" class="w-full mb-4 border border-gray-300 rounded-lg px-3 py-2 bg-white font-medium text-sm hidden focus:outline-none focus:border-blue-500 shadow-sm">
+                    </select>
+
+                    <div class="flex items-center justify-center gap-6 mb-6">
+                        <button id="btn-eval-minus" class="w-14 h-14 rounded-full bg-red-100 text-red-600 font-black text-3xl shadow hover:bg-red-200 transition-colors">-</button>
+                        <div id="eval-display-circle" class="w-28 h-28 rounded-full border-4 flex items-center justify-center text-5xl font-black transition-colors duration-200">
+                            <span id="eval-value-display">5.0</span>
+                        </div>
+                        <button id="btn-eval-plus" class="w-14 h-14 rounded-full bg-green-100 text-green-600 font-black text-3xl shadow hover:bg-green-200 transition-colors">+</button>
+                    </div>
+
+                    <input type="range" id="eval-slider" min="0" max="50" value="50" class="w-full mb-6 h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+
+                    <div class="flex gap-2 w-full">
+                        <button id="btn-cancel-eval" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancelar</button>
+                        <button id="btn-save-eval" class="flex-1 py-3 bg-blue-500 text-white rounded-lg font-bold hover:bg-blue-600 shadow-md"><i class="fas fa-save mr-2"></i>Guardar Nota</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Novedad -->
+            <div id="modal-novedad" class="hidden absolute inset-0 bg-black bg-opacity-80 z-30 flex items-center justify-center p-4">
+                <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col animate-slide-2">
+                    <h3 class="text-lg font-bold text-red-600 mb-1"><i class="fas fa-exclamation-triangle mr-2"></i>Registrar Novedad</h3>
+                    <p id="novedad-student-name" class="font-bold text-gray-800 text-sm mb-4 bg-gray-100 p-2 rounded"></p>
+                    <textarea id="novedad-text" rows="3" placeholder="Ej: Llegó tarde..." class="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:outline-none focus:border-red-500 resize-none text-sm"></textarea>
+                    <div class="flex gap-2">
+                        <button id="btn-cancel-novedad" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancelar</button>
+                        <button id="btn-save-novedad" class="flex-1 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 shadow-md"><i class="fas fa-save mr-2"></i>Guardar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Cambiar Contraseña -->
+            <div id="modal-cambiar-password" class="hidden absolute inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col animate-slide-2">
+                    <h3 class="text-lg font-bold text-blue-700 mb-1"><i class="fas fa-key mr-2"></i>Cambiar Contraseña</h3>
+                    <p class="text-sm text-gray-500 mb-4">Actualiza tu clave de acceso al sistema.</p>
+                    
+                    <input type="password" id="input-old-password" placeholder="Contraseña Actual" class="w-full border border-gray-300 rounded-lg px-4 py-3 mb-3 text-center font-medium focus:outline-none focus:border-blue-500">
+                    <input type="password" id="input-new-password" placeholder="Nueva Contraseña" class="w-full border border-gray-300 rounded-lg px-4 py-3 mb-5 text-center font-medium focus:outline-none focus:border-blue-500">
+                    
+                    <div class="flex gap-2">
+                        <button id="btn-cancel-password" class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancelar</button>
+                        <button id="btn-save-password" class="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md"><i class="fas fa-save mr-2"></i>Guardar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Devoluciones -->
+            <div id="modal-devoluciones" class="hidden absolute inset-0 bg-black bg-opacity-80 z-30 flex items-center justify-center p-4">
+                <div class="bg-white rounded-xl shadow-2xl p-4 w-full max-w-md flex flex-col h-80-pct animate-slide-2">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h3 class="text-lg font-bold text-yellow-600"><i class="fas fa-undo mr-2"></i>Préstamos Activos</h3>
+                        <button id="btn-close-devoluciones" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+                    <div id="lista-devoluciones" class="flex-1 overflow-y-auto flex flex-col gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-overlays-container" class="absolute inset-0 bg-gray-50 z-20 flex flex-col overflow-y-auto">
+            <div id="staff-login-overlay" class="flex-1 flex flex-col items-center justify-center p-4 w-full max-w-sm mx-auto">
+                <div class="bg-white p-6 rounded-2xl shadow-xl w-full text-center border-t-4 border-blue-500 mb-6">
+                    <i class="fas fa-id-badge text-5xl text-blue-500 mb-4"></i>
+                    <h2 class="text-xl font-bold mb-1">Acceso de Personal</h2>
+                    <p class="text-sm text-gray-500 mb-6">Inicia turno para operar el sistema.</p>
+                    <input type="text" id="staff-id" placeholder="Documento" class="w-full border border-gray-300 rounded-lg px-4 py-3 mb-3 text-center font-medium focus:outline-none focus:border-blue-500">
+                    <input type="password" id="staff-pin" placeholder="Contraseña" class="w-full border border-gray-300 rounded-lg px-4 py-3 mb-5 text-center font-medium focus:outline-none focus:border-blue-500">
+                    <button id="btn-staff-login" class="bg-blue-600 text-white font-bold py-3 px-4 w-full rounded-lg hover:bg-blue-700 shadow-md transition-colors"><i class="fas fa-sign-in-alt mr-2"></i>Iniciar Turno</button>
+                </div>
+                <button id="btn-open-student-portal" class="bg-green-500 text-white font-black py-4 px-4 w-full rounded-2xl shadow-lg hover:bg-green-600 transition-transform transform hover:scale-105 flex items-center justify-center border-b-4 border-green-700"><i class="fas fa-id-card text-3xl mr-3"></i><div class="text-left leading-tight"><span class="block text-xl">Obtener mi Carnet</span></div></button>
+            </div>
+
+            <div id="student-portal-overlay" class="hidden flex-1 flex flex-col items-center justify-center p-4 w-full max-w-md mx-auto relative pb-10">
+                <button id="btn-back-to-login" class="absolute top-4 left-4 text-gray-500 font-bold hover:text-gray-800 bg-white px-3 py-2 rounded-lg shadow-sm z-30"><i class="fas fa-arrow-left mr-1"></i> Volver</button>
+
+                <div id="sp-step-search" class="bg-white p-6 rounded-2xl shadow-xl w-full text-center border-t-4 border-green-500 mt-12">
+                    <div class="bg-green-100 text-green-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-id-card text-3xl"></i></div>
+                    <h2 class="text-xl font-bold mb-2">Carnet Digital</h2>
+                    <p class="text-xs text-gray-500 mb-4">Ingresa tu número de documento o matrícula</p>
+                    <input type="text" id="sp-student-id" placeholder="Número de Documento o Matrícula" class="w-full border border-gray-300 rounded-lg px-4 py-4 mb-4 text-center font-black text-lg focus:outline-none focus:border-green-500">
+                    <button id="btn-sp-search" class="bg-green-600 text-white font-bold py-4 w-full rounded-xl hover:bg-green-700 shadow-md transition-colors text-lg"><i class="fas fa-search mr-2"></i>Buscar Carnet</button>
+                </div>
+
+                <div id="sp-step-photo" class="hidden bg-white p-6 rounded-2xl shadow-xl w-full text-center border-t-4 border-yellow-500 mt-12">
+                    <h2 class="text-xl font-black text-gray-800 mb-1" id="sp-welcome-name">¡Hola!</h2>
+                    <p class="text-sm text-gray-600 mb-6 font-medium">Sube una foto tipo documento (rostro de frente).</p>
+                    <label class="flex flex-col items-center justify-center bg-gray-100 border-2 border-dashed border-gray-300 rounded-xl h-48 cursor-pointer relative overflow-hidden group">
+                        <i class="fas fa-camera text-4xl text-gray-400 mb-2"></i><span class="font-bold text-gray-600">Tomar o subir foto</span>
+                        <input type="file" id="sp-photo-input" accept="image/*" capture="user" class="hidden">
+                        <img id="sp-photo-preview" src="" class="hidden absolute inset-0 w-full h-full object-cover">
+                    </label>
+                    <button id="btn-sp-save-photo" class="hidden bg-blue-600 text-white font-bold py-4 w-full rounded-xl hover:bg-blue-700 shadow-md transition-colors mt-4 text-lg"><i class="fas fa-check-circle mr-2"></i>Guardar y Ver Carnet</button>
+                </div>
+
+                <div id="sp-step-carnet" class="hidden w-full flex flex-col items-center mt-8">
+                    <div class="mb-4 w-full px-2 flex flex-col gap-2">
+                        <button id="btn-download-carnet" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-blue-700 shadow-md flex items-center justify-center w-full text-base"><i class="fas fa-download mr-2 text-xl"></i> Descargar mi Carnet (JPG)</button>
+                        <button id="btn-change-photo" class="bg-white text-gray-700 border-2 border-gray-200 font-bold py-2 px-6 rounded-xl hover:bg-gray-50 shadow-sm flex items-center justify-center w-full text-sm"><i class="fas fa-camera-rotate mr-2"></i> Cambiar Foto</button>
+                    </div>
+
+                    <div id="carnet-card" class="carnet-container">
+                        <svg class="carnet-waves" viewBox="0 0 1440 320" preserveAspectRatio="none">
+                            <path id="wave-1" fill="#0ea5e9" fill-opacity="1" d="M0,96L60,106.7C120,117,240,139,360,133.3C480,128,600,96,720,80C840,64,960,64,1080,85.3C1200,107,1320,149,1380,170.7L1440,192L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"></path>
+                            <path id="wave-2" fill="#0284c7" fill-opacity="0.7" d="M0,192L60,170.7C120,149,240,107,360,112C480,117,600,171,720,186.7C840,203,960,181,1080,149.3C1200,117,1320,75,1380,53.3L1440,32L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"></path>
+                            <path id="wave-3" fill="#0369a1" fill-opacity="1" d="M0,64L80,80C160,96,320,128,480,122.7C640,117,800,75,960,69.3C1120,64,1280,96,1360,112L1440,128L1440,0L1380,0C1280,0,1120,0,960,0C800,0,640,0,480,0C320,0,160,0,80,0L0,0Z"></path>
+                        </svg>
+
+                        <div class="w-full px-6 mt-8 flex justify-between items-center z-10 relative">
+                            <div class="w-32 h-40 bg-gray-100 border-4 border-white shadow-md rounded-lg overflow-hidden flex flex-shrink-0 items-center justify-center"><img id="carnet-render-foto" src="" class="w-full h-full object-cover"></div>
+                            <div class="w-24 h-28 flex items-center justify-center flex-shrink-0"><img id="carnet-render-logo" src="" class="max-w-full max-h-full object-contain drop-shadow-md"></div>
+                        </div>
+
+                        <!-- CARNET: Nombres y Apellidos en líneas separadas -->
+                        <div class="w-full px-4 mt-2 flex flex-col items-center z-10">
+                            <h2 id="carnet-render-nombres" class="font-black text-[22px] leading-none uppercase text-center text-gray-800 tracking-wide w-full break-words">NOMBRES</h2>
+                            <h2 id="carnet-render-apellidos" class="font-black text-[22px] leading-tight uppercase text-center text-gray-800 tracking-wide w-full break-words mt-1">APELLIDOS</h2>
+                        </div>
+
+                        <div class="mt-auto bg-white p-2 rounded-xl shadow-sm border border-gray-100 z-10 mb-2" id="carnet-render-qr-box"></div>
+
+                        <div class="mb-4 flex flex-col items-center z-10 w-full px-6 text-center">
+                            <div id="carnet-render-doc" class="font-bold text-base tracking-widest text-gray-800">DOCUMENTO</div>
+                            <div id="carnet-render-matricula" class="font-semibold text-xs tracking-wider text-gray-500">MATRÍCULA</div>
+                            <div id="carnet-render-grado" class="font-black text-xl tracking-widest text-blue-700 mt-1 uppercase">GRADO</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-admin" class="p-4 hidden flex-col gap-4 h-full relative">
+            <div id="admin-login" class="bg-white rounded-xl shadow-sm p-6 flex flex-col items-center justify-center h-full border-t-4 border-gray-800">
+                <i class="fas fa-shield-alt text-5xl text-gray-800 mb-4"></i>
+                <h2 class="text-xl font-bold mb-2">Administración Global</h2>
+                <input type="password" id="admin-pin" placeholder="Contraseña" class="border border-gray-300 rounded-lg px-4 py-3 text-center text-xl w-full max-w-xs mb-4 focus:outline-none focus:border-gray-800">
+                <button id="btn-admin-login" class="bg-gray-800 text-white px-6 py-3 rounded-lg font-bold w-full max-w-xs hover:bg-gray-900 shadow-md">Ingresar</button>
+                <button id="btn-back-from-login" class="mt-6 text-gray-500 text-sm font-bold hover:text-gray-700"><i class="fas fa-arrow-left mr-2"></i>Volver al Escáner</button>
+            </div>
+
+            <div id="admin-panel" class="hidden flex-col gap-4 pb-10">
+                
+                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-yellow-400">
+                    <h3 class="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider"><i class="fas fa-school mr-2"></i>Identidad Corporativa</h3>
+                    <div class="flex flex-col gap-3">
+                        <input type="text" id="inst-name-input" placeholder="Sistema Institucional" class="border border-gray-300 rounded-lg px-4 py-2 font-medium">
+                        <div class="flex gap-3 mt-1 mb-2 border-t border-b py-3 border-gray-100">
+                            <div class="flex-1"><label class="text-11px font-bold text-gray-500 mb-1 block uppercase">Color Principal</label><input type="color" id="inst-color1" class="w-full h-10 border border-gray-300 rounded cursor-pointer" value="#2563eb"></div>
+                            <div class="flex-1"><label class="text-11px font-bold text-gray-500 mb-1 block uppercase">Color Secundario</label><input type="color" id="inst-color2" class="w-full h-10 border border-gray-300 rounded cursor-pointer" value="#0ea5e9"></div>
+                        </div>
+                        <label class="flex flex-col items-center px-4 py-3 bg-yellow-50 text-yellow-700 rounded-lg border-2 border-dashed border-yellow-300 cursor-pointer hover:bg-yellow-100">
+                            <span class="text-sm font-bold">Subir Escudo / Logo (PNG)</span>
+                            <input type='file' id="inst-logo-input" class="hidden" accept="image/png, image/jpeg, image/jpg" />
+                        </label>
+                        <img id="logo-preview" class="hidden max-h-16 object-contain shadow-sm rounded p-1 mx-auto" />
+                        <button id="btn-save-settings" class="bg-yellow-500 text-white px-4 py-3 rounded-lg font-bold hover:bg-yellow-600 shadow mt-2"><i class="fas fa-save mr-2"></i>Guardar Identidad</button>
+                    </div>
+                </div>
+
+                <!-- BROWSER DE BASES DE DATOS (NUEVO LECTOR DINÁMICO POR ENCABEZADOS) -->
+                <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Bases de Datos (Excel Nuevo & Antiguo)</h3>
+                        <button id="btn-download-sample-excel" class="text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 font-bold px-3 py-1.5 rounded-lg border border-blue-200 transition-colors flex items-center">
+                            <i class="fas fa-file-excel mr-1.5 text-green-600"></i> Descargar Ejemplo Excel Nuevo
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Soporta detección automática de columnas: <code>N°</code>, <code>MATRÍCULA</code>, <code>TIPO DOC.</code>, <code>DOCUMENTO</code>, <code>ESTUDIANTE</code> (o <code>APELLIDOS</code> / <code>NOMBRES</code>) y lectura multi-hoja por grupos.</p>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                        <label class="flex flex-col relative overflow-hidden items-center p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-200 cursor-pointer text-center hover:bg-blue-100 transition-colors">
+                            <i class="fas fa-users text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir Alumnos</span><span id="count-students" class="text-10px text-blue-500 font-bold mt-1 z-10">Cargando...</span>
+                            <div id="progress-students" class="absolute bottom-0 left-0 h-1 bg-blue-500 transition-all duration-300 w-0"></div><input type='file' id="excel-students" class="hidden" accept=".xlsx, .xls" />
+                        </label>
+                        <label class="flex flex-col relative overflow-hidden items-center p-3 bg-purple-50 text-purple-700 rounded-xl border border-purple-200 cursor-pointer text-center hover:bg-purple-100 transition-colors">
+                            <i class="fas fa-id-badge text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir Personal</span><span id="count-staff" class="text-10px text-purple-500 font-bold mt-1 z-10">Cargando...</span>
+                            <div id="progress-staff" class="absolute bottom-0 left-0 h-1 bg-purple-500 transition-all duration-300 w-0"></div><input type='file' id="excel-staff" class="hidden" accept=".xlsx, .xls" />
+                        </label>
+                        <label class="flex flex-col relative overflow-hidden items-center p-3 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-200 cursor-pointer text-center hover:bg-yellow-100 transition-colors">
+                            <i class="fas fa-boxes text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir Elementos</span><span id="count-items" class="text-10px text-yellow-600 font-bold mt-1 z-10">Cargando...</span>
+                            <div id="progress-items" class="absolute bottom-0 left-0 h-1 bg-yellow-500 transition-all duration-300 w-0"></div><input type='file' id="excel-items" class="hidden" accept=".xlsx, .xls" />
+                        </label>
+                        <label class="flex flex-col relative overflow-hidden items-center p-3 bg-green-50 text-green-700 rounded-xl border border-green-200 cursor-pointer text-center hover:bg-green-100 transition-colors">
+                            <i class="fas fa-utensils text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir PAE (VIP)</span><span id="count-pae" class="text-10px text-green-600 font-bold mt-1 z-10">Cargando...</span>
+                            <div id="progress-pae" class="absolute bottom-0 left-0 h-1 bg-green-500 transition-all duration-300 w-0"></div><input type='file' id="excel-pae" class="hidden" accept=".xlsx, .xls" />
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Modal de Errores de Validación de Excel -->
+                <div id="modal-excel-errors" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg flex flex-col max-h-[85vh]">
+                        <div class="flex items-center justify-between border-b pb-3 mb-3">
+                            <div class="flex items-center gap-2 text-red-600">
+                                <i class="fas fa-exclamation-triangle text-xl"></i>
+                                <h3 class="font-black text-base">Inconsistencias en el Archivo Excel</h3>
+                            </div>
+                            <button id="btn-close-excel-errors" class="text-gray-400 hover:text-gray-700 p-1"><i class="fas fa-times text-lg"></i></button>
+                        </div>
+                        <p class="text-xs text-gray-600 mb-3" id="excel-errors-summary">Se detectaron filas que no cumplen los requisitos obligatorios:</p>
+                        <div id="excel-errors-list" class="flex-1 overflow-y-auto divide-y divide-gray-100 border border-red-100 bg-red-50 rounded-lg p-2 text-xs font-mono mb-4"></div>
+                        <div class="flex justify-end gap-2 pt-2 border-t">
+                            <button id="btn-excel-errors-ok" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm transition-colors">Entendido</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500">
+                    <h3 class="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider"><i class="fas fa-user-shield mr-2"></i>Permisos por Rol</h3>
+                    <div id="roles-config-container" class="flex flex-col gap-3"><div class="text-center py-2 text-sm text-gray-400">Cargando permisos...</div></div>
+                    <button id="btn-save-roles" class="mt-4 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold shadow-md w-full"><i class="fas fa-save mr-2"></i>Guardar Permisos</button>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm p-5 border-2 border-indigo-100">
+                    <h3 class="text-xs font-bold text-indigo-700 mb-3 uppercase tracking-wider"><i class="fas fa-qrcode mr-2"></i>Generador Códigos QR</h3>
+                    <h4 class="text-11px font-bold text-gray-500 mb-2 uppercase">Impresión Masiva PDF</h4>
+                    <select id="qr-group" class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-gray-50 font-medium text-sm"></select>
+                    <div class="flex flex-col gap-2">
+                        <button id="btn-qr-print" class="w-full bg-indigo-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-md text-sm"><i class="fas fa-print mr-2"></i> Imprimir QR Alumnos</button>
+                        <button id="btn-qr-items" class="w-full bg-orange-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-orange-700 shadow-md text-sm"><i class="fas fa-box-open mr-2"></i> Imprimir QR Elementos (Inventario)</button>
+                    </div>
+                    
+                    <div class="mt-5 pt-4 border-t border-indigo-100">
+                        <h4 class="text-11px font-bold text-gray-500 mb-2 uppercase">Búsqueda Individual (MX10 / PNG)</h4>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" id="qr-search-input" placeholder="Documento o Matrícula" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                            <button id="btn-qr-search" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-200 transition-colors font-bold"><i class="fas fa-search"></i></button>
+                        </div>
+                        
+                        <div id="qr-individual-result" class="hidden flex flex-col items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm mt-2">
+                            <div id="qr-ind-name" class="font-black text-sm text-center mb-2 uppercase leading-tight text-gray-800 w-full break-words">NOMBRE</div>
+                            <div id="qr-ind-img" class="w-36 h-36 mb-2 border border-gray-100 rounded flex items-center justify-center bg-white"></div>
+                            <div id="qr-ind-id" class="text-sm font-black bg-gray-100 px-4 py-1 rounded border-t border-b border-gray-300 mb-1 tracking-widest w-full text-center">ID</div>
+                            <div id="qr-ind-group" class="text-11px text-gray-600 uppercase font-bold mb-4">GRUPO</div>
+                            <div class="flex gap-2 w-full">
+                                <button id="btn-qr-ind-print" class="flex-1 bg-gray-800 text-white py-2 rounded-lg text-11px font-bold hover:bg-black shadow"><i class="fas fa-print mb-1 block text-lg"></i> Imprimir (MX10)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-red-50 rounded-xl shadow-sm p-5 border-2 border-red-200 mt-4">
+                    <h3 class="text-xs font-bold text-red-700 mb-2 uppercase tracking-wider"><i class="fas fa-skull-crossbones mr-2"></i>Zona de Peligro (Formatear)</h3>
+                    <p class="text-11px text-red-600 mb-3 font-medium">Borrará todos los datos de la base de datos (Estudiantes, Docentes y Registros). ¡No se puede deshacer!</p>
+                    <button id="btn-factory-reset" class="w-full bg-red-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-red-700 shadow-md text-sm"><i class="fas fa-trash-alt mr-2"></i>Formatear Sistema</button>
+                </div>
+
+                <button id="btn-admin-logout" class="text-gray-500 text-sm font-bold mt-4 py-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50"><i class="fas fa-arrow-left mr-2"></i>Volver al Escáner</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Botón piñón Admin oculto a la izquierda -->
+    <button id="btn-admin-gear" class="fixed bottom-4 left-4 bg-gray-800 text-gray-200 hover:text-white w-12 h-12 rounded-full shadow-lg border border-gray-600 flex items-center justify-center z-50 opacity-40 hover:opacity-100 transition-all"><i class="fas fa-cog"></i></button>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

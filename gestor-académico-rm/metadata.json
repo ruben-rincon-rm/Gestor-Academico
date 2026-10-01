@@ -1,0 +1,6 @@
+{
+  "name": "Gestor Académico RM",
+  "description": "Sistema Institucional, gestión académica, carnet digital, escáner QR, asistencia y evaluaciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

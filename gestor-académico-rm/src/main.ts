@@ -11,6 +11,7 @@ import {
     deleteDoc 
 } from "firebase/firestore";
 import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
 
 // Interfaces
 interface StudentRecord {
@@ -33,6 +34,7 @@ interface StaffRecord {
     nombre: string;
     grado?: string;
     rol?: string;
+    cargo?: string;
     clave?: string;
     foto?: string;
 }
@@ -71,22 +73,25 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app); 
 const db = getFirestore(app);
 
-// Rutas de Colecciones
-const getSettingsPath = () => doc(db, 'configuracion_app', 'institucion');
-const getStudentsPath = () => collection(db, 'estudiantes');
-const getStaffPath = () => collection(db, 'docentes');
-const getInventarioPath = () => collection(db, 'inventario');
-const getPAEBenefPath = () => collection(db, 'pae_beneficiarios');
-const getPermissionsPath = () => doc(db, 'configuracion_app', 'permisos_roles');
+// Rutas de Colecciones y Estado Multi-Tenant (Ramón Múnera vs Modo Prueba 30 Días)
+export type AccessMode = 'ramon_munera' | 'modo_prueba';
+let currentAccessMode: AccessMode = 'ramon_munera';
 
-const getMealsPath = () => collection(db, 'registros_pae');
-const getAttendancePath = () => collection(db, 'registros_asistencia');
-const getLoansPath = () => collection(db, 'registros_prestamos');
-const getNewsPath = () => collection(db, 'registros_novedades');
-const getSalidasPath = () => collection(db, 'registros_salidas');
-const getPruebasPath = () => collection(db, 'registros_pruebas');
-const getEvaluacionesPath = () => collection(db, 'registros_evaluaciones');
-const getPlanillasPath = () => collection(db, 'planillas_docentes');
+const getSettingsPath = () => doc(db, 'configuracion_app', currentAccessMode === 'modo_prueba' ? 'institucion_prueba' : 'institucion');
+const getStudentsPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_estudiantes' : 'estudiantes');
+const getStaffPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_docentes' : 'docentes');
+const getInventarioPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_inventario' : 'inventario');
+const getPAEBenefPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_pae_beneficiarios' : 'pae_beneficiarios');
+const getPermissionsPath = () => doc(db, 'configuracion_app', currentAccessMode === 'modo_prueba' ? 'permisos_roles_prueba' : 'permisos_roles');
+
+const getMealsPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_pae' : 'registros_pae');
+const getAttendancePath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_asistencia' : 'registros_asistencia');
+const getLoansPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_prestamos' : 'registros_prestamos');
+const getNewsPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_novedades' : 'registros_novedades');
+const getSalidasPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_salidas' : 'registros_salidas');
+const getPruebasPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_pruebas' : 'registros_pruebas');
+const getEvaluacionesPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_registros_evaluaciones' : 'registros_evaluaciones');
+const getPlanillasPath = () => collection(db, currentAccessMode === 'modo_prueba' ? 'prueba_planillas_docentes' : 'planillas_docentes');
 
 // Variables Globales del Sistema
 let currentStaff: any = null; 
@@ -114,7 +119,148 @@ const modulesList = [
 
 let html5QrcodeScanner: any = null; 
 let isProcessing = false;
-let institucionData = { nombre: "Sistema Institucional", logo: null as string | null, color1: "#2563eb", color2: "#0ea5e9" };
+
+// Perfil de Institución y Licencia Multi-Colegio
+export type LicenseType = 'institucional' | 'docente' | 'prueba';
+
+export interface InstitutionProfile {
+    id: string;
+    nombre: string;
+    logo: string | null;
+    color1: string;
+    color2: string;
+    licenciaInicio: string;
+    licenciaFin: string;
+    tipoPlan: LicenseType;
+    limiteUsuarios: number;
+    titularNombre?: string;
+    titularDoc?: string;
+    titularContacto?: string;
+    permisosPersonalizados?: Record<string, string[]>;
+    popupActivo: boolean;
+    popupTitulo: string;
+    popupUrl: string;
+    popupDescripcion: string;
+}
+
+export const RAMON_MUNERA_PROFILE: InstitutionProfile = {
+    id: "ramon_munera",
+    nombre: "I.E. Ramón Múnera Lopera",
+    logo: null,
+    color1: "#2563eb",
+    color2: "#0ea5e9",
+    licenciaInicio: "2026-01-01",
+    licenciaFin: "2027-12-31",
+    tipoPlan: "institucional",
+    limiteUsuarios: 9999,
+    titularNombre: "I.E. Ramón Múnera Lopera",
+    popupActivo: true,
+    popupTitulo: "Tutorial & Carnet Digital Institucional",
+    popupUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    popupDescripcion: "Bienvenido al sistema institucional de la I.E. Ramón Múnera Lopera. Consulta el tutorial de uso del carnet y los módulos académicos."
+};
+
+export const TRIAL_INSTITUTION_DEFAULT: InstitutionProfile = {
+    id: "modo_prueba",
+    nombre: "Institución Educativa (Modo Prueba 30 Días)",
+    logo: null,
+    color1: "#4f46e5",
+    color2: "#06b6d4",
+    licenciaInicio: "2026-01-01",
+    licenciaFin: "2026-12-31",
+    tipoPlan: "prueba",
+    limiteUsuarios: 9999,
+    titularNombre: "Institución Educativa (Modo Prueba)",
+    popupActivo: true,
+    popupTitulo: "¡Bienvenido al Modo Prueba de 30 Días!",
+    popupUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    popupDescripcion: "Esta es tu versión de demostración por 30 días para evaluar el Gestor Académico. Puedes personalizar el nombre de tu colegio, logo y Pop-up en Administración. Desarrollada por www.espatodo.com"
+};
+
+// Datos Demo Precargados para Modo Prueba Inmediata (Sin tocar Ramón Múnera)
+export const DEMO_STUDENTS: Record<string, StudentRecord> = {
+    "1032033800": {
+        id: "1032033800",
+        matricula: "261047",
+        tipo_documento: "R.C.",
+        documento: "1032033800",
+        nombres: "JUSTIN ANDRES",
+        apellidos: "BERNAL GARCIA",
+        nombre_completo: "BERNAL GARCIA JUSTIN ANDRES",
+        nombre: "BERNAL GARCIA JUSTIN ANDRES",
+        grado: "TS0501"
+    },
+    "1032033801": {
+        id: "1032033801",
+        matricula: "261048",
+        tipo_documento: "T.I.",
+        documento: "1032033801",
+        nombres: "JUAN CARLOS",
+        apellidos: "DE LA OSSA PEREZ",
+        nombre_completo: "DE LA OSSA PEREZ JUAN CARLOS",
+        nombre: "DE LA OSSA PEREZ JUAN CARLOS",
+        grado: "TS0501"
+    },
+    "1032033802": {
+        id: "1032033802",
+        matricula: "261049",
+        tipo_documento: "T.I.",
+        documento: "1032033802",
+        nombres: "VALENTINA",
+        apellidos: "ZAPATA MARTINEZ",
+        nombre_completo: "ZAPATA MARTINEZ VALENTINA",
+        nombre: "ZAPATA MARTINEZ VALENTINA",
+        grado: "TS0501"
+    },
+    "1032033901": {
+        id: "1032033901",
+        matricula: "262001",
+        tipo_documento: "T.I.",
+        documento: "1032033901",
+        nombres: "CAMILO",
+        apellidos: "GOMEZ ALVAREZ",
+        nombre_completo: "GOMEZ ALVAREZ CAMILO",
+        nombre: "GOMEZ ALVAREZ CAMILO",
+        grado: "TS0502"
+    },
+    "1032033902": {
+        id: "1032033902",
+        matricula: "262002",
+        tipo_documento: "T.I.",
+        documento: "1032033902",
+        nombres: "SOFIA MARIANA",
+        apellidos: "RODRIGUEZ LOPEZ",
+        nombre_completo: "RODRIGUEZ LOPEZ SOFIA MARIANA",
+        nombre: "RODRIGUEZ LOPEZ SOFIA MARIANA",
+        grado: "TS0502"
+    }
+};
+
+export const DEMO_STAFF: Record<string, StaffRecord> = {
+    "1234": {
+        id: "1234",
+        nombre: "Profesor de Demostración",
+        cargo: "docente",
+        rol: "docente",
+        clave: "1234"
+    },
+    "admin": {
+        id: "admin",
+        nombre: "Administrador Demo",
+        cargo: "administrador",
+        rol: "administrador",
+        clave: "1234"
+    }
+};
+
+// Lista de instituciones registradas
+let institucionesList: InstitutionProfile[] = [
+    { ...RAMON_MUNERA_PROFILE },
+    { ...TRIAL_INSTITUTION_DEFAULT }
+];
+
+let institucionData: InstitutionProfile = { ...institucionesList[0] };
+let isLicenseValid = true;
 let appMode = 'asistencia'; 
 let efPhase = 'asistencia'; 
 let loanTempStudent: any = null; 
@@ -177,6 +323,83 @@ export const getTodayString = () => {
 
 export const formatTime = (d: Date) => d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 export const formatTimeWithSeconds = (d: Date) => d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// ==========================================================
+// CONTROL UNIVERSAL DE MODO PRUEBA DE 30 DÍAS (FREE TRIAL)
+// ==========================================================
+export interface TrialStatus {
+    startDate: string;
+    totalDays: number;
+    elapsedDays: number;
+    remainingDays: number;
+    isExpired: boolean;
+}
+
+export const getTrialStatus = (): TrialStatus => {
+    let trialData: { startDate: string; days: number } | null = null;
+    const raw = localStorage.getItem('espatodo_trial_setup_v1');
+    if (raw) {
+        try {
+            trialData = JSON.parse(raw);
+        } catch(e) {}
+    }
+    
+    if (!trialData || !trialData.startDate) {
+        trialData = {
+            startDate: getTodayString(),
+            days: 30
+        };
+        localStorage.setItem('espatodo_trial_setup_v1', JSON.stringify(trialData));
+    }
+    
+    const startMs = new Date(trialData.startDate + 'T00:00:00').getTime();
+    const todayMs = new Date(getTodayString() + 'T00:00:00').getTime();
+    const diffTime = todayMs - startMs;
+    const elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+    const remainingDays = Math.max(0, trialData.days - elapsedDays);
+    const isExpired = remainingDays <= 0;
+    
+    return {
+        startDate: trialData.startDate,
+        totalDays: trialData.days,
+        elapsedDays,
+        remainingDays,
+        isExpired
+    };
+};
+
+export const switchAccessMode = async (mode: AccessMode) => {
+    currentAccessMode = mode;
+    localStorage.setItem('active_access_mode', mode);
+    
+    if (mode === 'modo_prueba') {
+        const localTrialProf = localStorage.getItem('trial_institution_profile');
+        if (localTrialProf) {
+            try {
+                institucionData = JSON.parse(localTrialProf);
+            } catch(e) {
+                institucionData = { ...TRIAL_INSTITUTION_DEFAULT };
+            }
+        } else {
+            institucionData = { ...TRIAL_INSTITUTION_DEFAULT };
+        }
+    } else {
+        const found = institucionesList.find(i => i.id === 'ramon_munera');
+        institucionData = found ? { ...found } : { ...RAMON_MUNERA_PROFILE };
+    }
+    
+    await loadDatabases();
+    aplicarConfiguracionUI();
+    checkLicenseValidity();
+    
+    if (institucionData.popupActivo) {
+        setTimeout(() => showStartupPopup(false), 500);
+    }
+
+    showToast(mode === 'modo_prueba' 
+        ? 'Modo Prueba (30 Días) activado. Entorno limpio e independiente.' 
+        : 'Conectado a la I.E. Ramón Múnera Lopera (Licencia Anual).', 'info', 4000);
+};
 
 export const showToast = (msg: string, type = 'success', dur = 3000) => {
     const container = document.getElementById('toast-container'); 
@@ -533,6 +756,21 @@ export const processExcelUpload = async (file: File, type: 'students' | 'staff' 
                 return showToast('No se encontraron registros válidos de estudiantes.', 'error', 4000); 
             }
             
+            // Si está en Modo Prueba (30 Días), guardar en la partición aislada de prueba
+            if (currentAccessMode === 'modo_prueba') {
+                showToast(`Guardando ${parsedStudents.length} alumnos en tu base de prueba...`, 'info', 3000);
+                studentsDict = {};
+                parsedStudents.forEach(item => {
+                    studentsDict[item.id] = item;
+                });
+                localStorage.setItem('trial_students', JSON.stringify(parsedStudents));
+                if (countEl) countEl.innerText = `${parsedStudents.length} alumnos (Prueba)`;
+                if (progressEl) setTimeout(() => progressEl.style.width = "0%", 1000);
+                populateQRGroups();
+                showToast(`¡Excelente! ${parsedStudents.length} estudiantes importados en tu colegio de prueba.`, 'success', 5000);
+                return;
+            }
+            
             showToast(`Sincronizando ${parsedStudents.length} alumnos a Firebase...`, 'warning', 4000);
             const colPath = getStudentsPath();
             
@@ -728,11 +966,123 @@ document.getElementById('btn-download-sample-excel')?.addEventListener('click', 
 // CARGA Y SINCRONIZACIÓN DE BASE DE DATOS
 // ==========================================================
 export const loadDatabases = async () => {
+    // -------------------------------------------------------------
+    // RAMA 1: MODO PRUEBA DE 30 DÍAS (AISLADO - NO TOCA RAMÓN MÚNERA)
+    // -------------------------------------------------------------
+    if (currentAccessMode === 'modo_prueba') {
+        const localTrialProf = localStorage.getItem('trial_institution_profile');
+        if (localTrialProf) {
+            try {
+                institucionData = JSON.parse(localTrialProf);
+            } catch(e) {
+                institucionData = { ...TRIAL_INSTITUTION_DEFAULT };
+            }
+        } else {
+            institucionData = { ...TRIAL_INSTITUTION_DEFAULT };
+        }
+
+        // Cargar alumnos de prueba
+        const localTrialStudents = localStorage.getItem('trial_students');
+        studentsDict = {};
+        if (localTrialStudents) {
+            try {
+                const list = JSON.parse(localTrialStudents);
+                if (Array.isArray(list)) {
+                    list.forEach((s: any) => { studentsDict[s.id] = s; });
+                } else if (typeof list === 'object') {
+                    studentsDict = list;
+                }
+            } catch(e) {}
+        }
+        
+        // Si no hay alumnos en prueba, precargar demo para test inmediato
+        if (Object.keys(studentsDict).length === 0) {
+            studentsDict = { ...DEMO_STUDENTS };
+            localStorage.setItem('trial_students', JSON.stringify(Object.values(DEMO_STUDENTS)));
+        }
+
+        // Cargar docentes de prueba
+        const localTrialStaff = localStorage.getItem('trial_staff');
+        staffDict = {};
+        if (localTrialStaff) {
+            try {
+                staffDict = JSON.parse(localTrialStaff);
+            } catch(e) {}
+        }
+        if (Object.keys(staffDict).length === 0) {
+            staffDict = { ...DEMO_STAFF };
+            localStorage.setItem('trial_staff', JSON.stringify(DEMO_STAFF));
+        }
+
+        inventarioDict = {};
+        paeBeneficiariosDict = {};
+
+        const elStud = document.getElementById('count-students'); 
+        if (elStud) elStud.innerText = Object.keys(studentsDict).length + ' alumnos (Prueba)';
+        const elStaff = document.getElementById('count-staff'); 
+        if (elStaff) elStaff.innerText = Object.keys(staffDict).length + ' personal (Prueba)';
+        const elItem = document.getElementById('count-items'); 
+        if (elItem) elItem.innerText = '0 registros';
+        const elPae = document.getElementById('count-pae'); 
+        if (elPae) elPae.innerText = '0 registros';
+
+        renderRolesConfig();
+        populateQRGroups();
+        aplicarConfiguracionUI();
+        checkLicenseValidity();
+        return;
+    }
+
+    // -------------------------------------------------------------
+    // RAMA 2: INSTITUCIÓN OFICIAL (I.E. RAMÓN MÚNERA LOPERA)
+    // -------------------------------------------------------------
     try {
         const settingsSnap = await getDoc(getSettingsPath());
         if (settingsSnap.exists()) { 
-            institucionData = settingsSnap.data() as any; 
+            const data: any = settingsSnap.data();
+            if (data.instituciones && Array.isArray(data.instituciones) && data.instituciones.length > 0) {
+                institucionesList = data.instituciones;
+            }
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const reqInst = urlParams.get('inst') || urlParams.get('institucion');
+            let activeInst: InstitutionProfile | undefined;
+            if (reqInst) {
+                activeInst = institucionesList.find(i => i.id === reqInst || normalizeNameMatch(i.nombre).includes(normalizeNameMatch(reqInst)));
+            }
+            if (!activeInst && data.institucionActivaId) {
+                activeInst = institucionesList.find(i => i.id === data.institucionActivaId);
+            }
+            if (!activeInst && data.institucionActiva) {
+                activeInst = data.institucionActiva;
+            }
+            if (!activeInst && data.nombre) {
+                activeInst = data as InstitutionProfile;
+            }
+            
+            if (activeInst) {
+                institucionData = { ...activeInst };
+            } else if (institucionesList.length > 0) {
+                institucionData = { ...institucionesList[0] };
+            }
+
+            // Cargar configuración de Super-Administrador comercial si existe
+            try {
+                const saSnap = await getDoc(doc(db, 'configuracion_app', 'superadmin_config'));
+                if (saSnap.exists()) {
+                    const saData = saSnap.data();
+                    if (saData.tipoPlan) institucionData.tipoPlan = saData.tipoPlan;
+                    if (saData.licenciaInicio) institucionData.licenciaInicio = saData.licenciaInicio;
+                    if (saData.licenciaFin) institucionData.licenciaFin = saData.licenciaFin;
+                    if (saData.titularNombre) institucionData.titularNombre = saData.titularNombre;
+                    if (saData.titularDoc) institucionData.titularDoc = saData.titularDoc;
+                    if (saData.titularContacto) institucionData.titularContacto = saData.titularContacto;
+                    if (saData.rolePermissions) rolePermissions = saData.rolePermissions;
+                }
+            } catch(e) {}
+            
             aplicarConfiguracionUI(); 
+            checkLicenseValidity();
         }
         
         const studentsSnap = await getDocs(getStudentsPath()); 
@@ -1708,6 +2058,7 @@ if (inputManual && dropdownSearch) {
 // ==========================================================
 export const renderCarnet = (user: any) => {
     document.getElementById('sp-step-carnet')?.classList.remove('hidden'); 
+    document.getElementById('sp-header-bar')?.classList.add('hidden'); // Ocultar barra superior para no duplicar 'Volver'
     const fotoEl = document.getElementById('carnet-render-foto') as HTMLImageElement;
     if (fotoEl) fotoEl.src = user.foto || "";
     
@@ -1769,10 +2120,69 @@ export const renderCarnet = (user: any) => {
     }
 };
 
+// Selector de Pestañas de Acceso Compacto (Optimizado para Celular)
+export const switchAccessTab = (tab: 'staff' | 'student') => {
+    const tabBtnStaff = document.getElementById('tab-btn-staff');
+    const tabBtnStudent = document.getElementById('tab-btn-student');
+    const panelStaff = document.getElementById('tab-panel-staff');
+    const panelStudent = document.getElementById('tab-panel-student');
+
+    if (tab === 'staff') {
+        panelStaff?.classList.remove('hidden');
+        panelStudent?.classList.add('hidden');
+        if (tabBtnStaff) {
+            tabBtnStaff.className = "flex-1 py-2 px-2 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all bg-white shadow-sm";
+            tabBtnStaff.setAttribute('style', 'color: #1d4ed8 !important; font-weight: 900 !important;');
+        }
+        if (tabBtnStudent) {
+            tabBtnStudent.className = "flex-1 py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all hover:bg-gray-100";
+            tabBtnStudent.setAttribute('style', 'color: #374151 !important; font-weight: 800 !important;');
+        }
+    } else {
+        panelStaff?.classList.add('hidden');
+        panelStudent?.classList.remove('hidden');
+        if (tabBtnStudent) {
+            tabBtnStudent.className = "flex-1 py-2 px-2 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all bg-white shadow-sm";
+            tabBtnStudent.setAttribute('style', 'color: #065f46 !important; font-weight: 900 !important;');
+        }
+        if (tabBtnStaff) {
+            tabBtnStaff.className = "flex-1 py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all hover:bg-gray-100";
+            tabBtnStaff.setAttribute('style', 'color: #374151 !important; font-weight: 800 !important;');
+        }
+        const inp = document.getElementById('compact-student-id') as HTMLInputElement;
+        if (inp) setTimeout(() => inp.focus(), 80);
+    }
+};
+
+document.getElementById('tab-btn-staff')?.addEventListener('click', () => switchAccessTab('staff'));
+document.getElementById('tab-btn-student')?.addEventListener('click', () => switchAccessTab('student'));
+
+// Búsqueda directa desde el panel compacto de estudiante
+document.getElementById('btn-compact-student-search')?.addEventListener('click', () => {
+    const compactInput = document.getElementById('compact-student-id') as HTMLInputElement;
+    const query = compactInput?.value.trim();
+    if (!query) return showToast('Ingresa tu documento o matrícula', 'warning');
+
+    const spInput = document.getElementById('sp-student-id') as HTMLInputElement;
+    if (spInput) spInput.value = query;
+
+    document.getElementById('staff-login-overlay')?.classList.add('hidden');
+    document.getElementById('student-portal-overlay')?.classList.remove('hidden');
+    document.getElementById('btn-sp-search')?.click();
+});
+
+document.getElementById('compact-student-id')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        (document.getElementById('btn-compact-student-search') as HTMLButtonElement)?.click();
+    }
+});
+
 // Portal del estudiante
 document.getElementById('btn-open-student-portal')?.addEventListener('click', () => { 
     document.getElementById('staff-login-overlay')?.classList.add('hidden'); 
     document.getElementById('student-portal-overlay')?.classList.remove('hidden'); 
+    document.getElementById('sp-header-bar')?.classList.remove('hidden'); 
     const inputSp = document.getElementById('sp-student-id') as HTMLInputElement;
     if (inputSp) inputSp.value = ''; 
     document.getElementById('sp-step-search')?.classList.remove('hidden'); 
@@ -1780,10 +2190,14 @@ document.getElementById('btn-open-student-portal')?.addEventListener('click', ()
     document.getElementById('sp-step-carnet')?.classList.add('hidden'); 
 });
 
-document.getElementById('btn-back-to-login')?.addEventListener('click', () => { 
+const returnToAccessView = () => { 
     document.getElementById('student-portal-overlay')?.classList.add('hidden'); 
     document.getElementById('staff-login-overlay')?.classList.remove('hidden'); 
-});
+    document.getElementById('sp-header-bar')?.classList.remove('hidden'); 
+};
+
+document.getElementById('btn-back-to-login')?.addEventListener('click', returnToAccessView);
+document.getElementById('btn-carnet-back')?.addEventListener('click', returnToAccessView);
 
 // Búsqueda en portal de estudiante por Documento o Matrícula
 document.getElementById('btn-sp-search')?.addEventListener('click', () => {
@@ -1878,6 +2292,7 @@ document.getElementById('btn-sp-save-photo')?.addEventListener('click', async ()
 
 document.getElementById('btn-change-photo')?.addEventListener('click', () => { 
     document.getElementById('sp-step-carnet')?.classList.add('hidden'); 
+    document.getElementById('sp-header-bar')?.classList.remove('hidden'); 
     const preview = document.getElementById('sp-photo-preview') as HTMLImageElement;
     if (preview) { preview.classList.add('hidden'); preview.src = ''; }
     const photoInput = document.getElementById('sp-photo-input') as HTMLInputElement;
@@ -1888,70 +2303,956 @@ document.getElementById('btn-change-photo')?.addEventListener('click', () => {
     document.getElementById('sp-step-photo')?.classList.remove('hidden'); 
 });
 
-// Descargar Carnet Digital como Imagen
-document.getElementById('btn-download-carnet')?.addEventListener('click', () => {
+// Descargar o Guardar Carnet Digital (Compatible 100% con iPhone / iPad / Android / PC)
+let lastGeneratedCarnetBlob: Blob | null = null;
+let lastGeneratedCarnetFileName = 'Carnet.jpg';
+
+const openIosCarnetModal = (dataUrl: string, _fileName: string) => {
+    const modal = document.getElementById('modal-ios-carnet');
+    const imgPreview = document.getElementById('img-ios-carnet-preview') as HTMLImageElement;
+    if (imgPreview) imgPreview.src = dataUrl;
+    modal?.classList.remove('hidden');
+};
+
+const closeIosCarnetModal = () => {
+    document.getElementById('modal-ios-carnet')?.classList.add('hidden');
+};
+
+document.getElementById('btn-close-ios-carnet')?.addEventListener('click', closeIosCarnetModal);
+document.getElementById('btn-close-ios-carnet-bottom')?.addEventListener('click', closeIosCarnetModal);
+
+document.getElementById('btn-ios-carnet-share')?.addEventListener('click', async () => {
+    if (!lastGeneratedCarnetBlob) return;
+    try {
+        const file = new File([lastGeneratedCarnetBlob], lastGeneratedCarnetFileName, { type: 'image/jpeg' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Carnet Digital',
+                text: 'Carnet Digital Institucional'
+            });
+            showToast('Carnet compartido / guardado', 'success');
+        } else {
+            showToast('Mantén presionada la imagen arriba y selecciona "Guardar en Fotos"', 'info', 4000);
+        }
+    } catch(e) {
+        showToast('Mantén presionada la imagen para Guardar en Fotos', 'info', 4000);
+    }
+});
+
+// Botón para salir de la vista de carnet y volver a la pantalla principal
+document.getElementById('btn-carnet-exit')?.addEventListener('click', () => {
+    document.getElementById('btn-back-to-login')?.click();
+});
+
+document.getElementById('btn-download-carnet')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-download-carnet') as HTMLButtonElement; 
     const originalHtml = btn.innerHTML; 
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Procesando...'; 
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generando Carnet...'; 
     btn.disabled = true;
     
     const carnetNode = document.getElementById('carnet-card');
-    if (window.html2canvas && carnetNode) {
-        window.html2canvas(carnetNode, { scale: 3, useCORS: true, backgroundColor: null }).then((canvas: HTMLCanvasElement) => { 
-            const imgData = canvas.toDataURL('image/jpeg', 0.95); 
-            const a = document.createElement('a'); 
-            a.href = imgData; 
-            a.download = `Carnet_${currentStudentForCarnet.id}.jpg`; 
-            document.body.appendChild(a); 
-            a.click(); 
-            document.body.removeChild(a); 
-            btn.innerHTML = originalHtml; 
-            btn.disabled = false; 
-            showToast('Carnet descargado', 'success'); 
-        }).catch(() => { 
-            showToast('Error al descargar carnet', 'error'); 
-            btn.innerHTML = originalHtml; 
-            btn.disabled = false; 
+    if (!window.html2canvas || !carnetNode) {
+        showToast('Componente de captura no listo', 'error');
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        return;
+    }
+
+    try {
+        const canvas: HTMLCanvasElement = await window.html2canvas(carnetNode, { 
+            scale: 3, 
+            useCORS: true, 
+            backgroundColor: '#ffffff' 
         });
-    } else {
-        btn.innerHTML = originalHtml; 
+
+        const idEstudiante = currentStudentForCarnet?.id || currentStudentForCarnet?.matricula || 'Estudiante';
+        const fileName = `Carnet_${idEstudiante}.jpg`;
+        lastGeneratedCarnetFileName = fileName;
+
+        canvas.toBlob(async (blob) => {
+            if (!blob) {
+                showToast('Error al procesar imagen del carnet', 'error');
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                return;
+            }
+
+            lastGeneratedCarnetBlob = blob;
+            const file = new File([blob], fileName, { type: 'image/jpeg' });
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            // Intentar Web Share API con archivo (Nativo en iPhone / iOS para Guardar en Fotos o WhatsApp)
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: 'Carnet Digital',
+                        text: `Carnet Digital de ${currentStudentForCarnet?.nombres || currentStudentForCarnet?.nombre || idEstudiante}`
+                    });
+                    showToast('¡Listo! Carnet guardado / compartido con éxito', 'success');
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                    return;
+                } catch(shareErr: any) {
+                    if (shareErr.name === 'AbortError') {
+                        // Usuario canceló el menú nativo
+                        btn.innerHTML = originalHtml;
+                        btn.disabled = false;
+                        return;
+                    }
+                    console.warn('Share API no disponible o rechazada:', shareErr);
+                }
+            }
+
+            if (isIOS) {
+                // En iPhone, abrir modal amigable con instrucciones y visor para "Guardar en Fotos"
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                openIosCarnetModal(dataUrl, fileName);
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                return;
+            }
+
+            // Descarga directa tradicional para PC y Android
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showToast('Carnet descargado con éxito', 'success');
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }, 'image/jpeg', 0.95);
+
+    } catch (err) {
+        console.error("Error al exportar carnet:", err);
+        showToast('Error al generar la imagen', 'error');
+        btn.innerHTML = originalHtml;
         btn.disabled = false;
     }
 });
 
 // ==========================================================
+// HOJA EN PDF TAMAÑO CARTA CON 32 ETIQUETAS QR RECORTABLES
+// PARA RECORTAR Y PEGAR EN TRABAJOS ESCRITOS Y TALLERES
+// ==========================================================
+export const generateStudentQrPdfSheet = async (user: any) => {
+    if (!user || !user.id) {
+        showToast('No hay datos de estudiante o usuario cargado', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-download-qr-sheet') as HTMLButtonElement;
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<div class="w-10 h-10 rounded-xl bg-white bg-opacity-20 flex items-center justify-center flex-shrink-0 text-white text-xl"><i class="fas fa-spinner fa-spin text-yellow-300"></i></div><div class="flex flex-col text-left flex-1 min-w-0"><span class="font-black text-xs sm:text-sm text-white">Generando Hoja de 32 QR...</span><span class="text-[10px] text-emerald-100">Ajustando tamaño carta</span></div>';
+        btn.disabled = true;
+    }
+
+    try {
+        const qrContent = String(user.id);
+        
+        // Contenedor temporal para generar el QR en alta resolución
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'fixed';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.top = '-9999px';
+        document.body.appendChild(tempDiv);
+
+        new (window as any).QRCode(tempDiv, {
+            text: qrContent,
+            width: 260,
+            height: 260,
+            correctLevel: 0 // L level: máxima sencillez y nitidez para escaneo óptico veloz
+        });
+
+        await new Promise((r) => setTimeout(r, 120));
+
+        let qrDataUrl = '';
+        const canvas = tempDiv.querySelector('canvas') as HTMLCanvasElement;
+        if (canvas) {
+            qrDataUrl = canvas.toDataURL('image/png');
+        } else {
+            const img = tempDiv.querySelector('img') as HTMLImageElement;
+            if (img && img.src) qrDataUrl = img.src;
+        }
+        document.body.removeChild(tempDiv);
+
+        if (!qrDataUrl) {
+            showToast('No se pudo generar la imagen del código QR', 'error');
+            if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+            return;
+        }
+
+        // Inicializar documento PDF en Tamaño Carta (Letter: 215.9 x 279.4 mm)
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'letter'
+        });
+
+        const pageWidth = 215.9;
+        const instName = (institucionData.nombre || 'INSTITUCIÓN EDUCATIVA').toUpperCase();
+        const nombres = (user.nombres || user.nombre || 'ESTUDIANTE').toUpperCase();
+        const apellidos = (user.apellidos || user.apellido || '').toUpperCase();
+        const nombreCompleto = `${nombres} ${apellidos}`.trim();
+        const grado = user.isStaff ? (user.rol || 'DOCENTE').toUpperCase() : `GRADO: ${user.grado || 'S/G'}`;
+        const docId = `DOC: ${user.id}`;
+
+        // ENCABEZADO SUPERIOR DEL DOCUMENTO
+        doc.setFillColor(243, 244, 246);
+        doc.rect(8, 6, pageWidth - 16, 17, 'F');
+        doc.setDrawColor(209, 213, 219);
+        doc.setLineWidth(0.3);
+        doc.rect(8, 6, pageWidth - 16, 17, 'S');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(31, 41, 55);
+        doc.text(instName, 12, 11);
+
+        doc.setFontSize(8.5);
+        doc.setTextColor(29, 78, 216);
+        doc.text('HOJA DE ETIQUETAS RECORTABLES CON CÓDIGO QR PARA EVALUACIÓN DE TRABAJOS', 12, 15);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(75, 85, 99);
+        doc.text(`Titular: ${nombreCompleto}  |  ${docId}  |  ${grado}  |  Plataforma: www.espatodo.com`, 12, 19);
+
+        doc.setFontSize(6.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text('✂ Recorta por la línea punteada y pega un recuadro a cada trabajo escrito para que el docente califique al escanear.', 12, 22.5);
+
+        // GRID DE 32 ETIQUETAS (4 COLUMNAS x 8 FILAS)
+        const cols = 4;
+        const rows = 8;
+        const cardWidth = 47.8;
+        const cardHeight = 29.5;
+        const startX = 9.5;
+        const startY = 25.5;
+        const gapX = 2.4;
+        const gapY = 2.0;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const x = startX + c * (cardWidth + gapX);
+                const y = startY + r * (cardHeight + gapY);
+
+                // Marco con línea punteada para recortar con tijeras
+                doc.setDrawColor(156, 163, 175);
+                doc.setLineWidth(0.25);
+                doc.setLineDashPattern([1.2, 1.2], 0);
+                doc.rect(x, y, cardWidth, cardHeight, 'S');
+
+                // Restaurar línea sólida para elementos internos
+                doc.setLineDashPattern([], 0);
+
+                // Indicador de tijera guía
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(6);
+                doc.setTextColor(180, 180, 180);
+                doc.text('✂', x + 1.2, y + 2.8);
+
+                // CÓDIGO QR EN ALTA DEFINICIÓN (22.5 x 22.5 mm)
+                const qrSize = 22.5;
+                const qrX = x + 1.5;
+                const qrY = y + 3.8;
+                doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+
+                // BLOQUE DERECHO: DATOS Y CASILLA DE NOTA
+                const textStartX = x + 25.2;
+
+                // Pastilla "TRABAJO ESCOLAR"
+                doc.setFillColor(238, 242, 255);
+                doc.roundedRect(textStartX, y + 2.2, 20.8, 3.8, 0.8, 0.8, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(5);
+                doc.setTextColor(30, 58, 138);
+                doc.text('TRABAJO ESCOLAR', textStartX + 10.4, y + 4.8, { align: 'center' });
+
+                // Nombres y Apellidos
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6.2);
+                doc.setTextColor(17, 24, 39);
+                const nombreCorto = nombres.length > 14 ? nombres.substring(0, 13) + '..' : nombres;
+                const apellidoCorto = apellidos.length > 14 ? apellidos.substring(0, 13) + '..' : apellidos;
+                doc.text(nombreCorto, textStartX, y + 8.5);
+                doc.text(apellidoCorto, textStartX, y + 11.5);
+
+                // Documento
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(5.5);
+                doc.setTextColor(75, 85, 99);
+                doc.text(`Doc: ${user.id}`, textStartX, y + 15);
+
+                // Grado
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(5.5);
+                doc.setTextColor(29, 78, 216);
+                doc.text(user.isStaff ? 'DOCENTE' : `Gr: ${user.grado || 'S/G'}`, textStartX, y + 18.2);
+
+                // Recuadro para escribir la Nota con lapicero
+                doc.setFillColor(250, 250, 250);
+                doc.setDrawColor(180, 190, 205);
+                doc.setLineWidth(0.2);
+                doc.roundedRect(textStartX, y + 20.2, 20.8, 6.8, 0.8, 0.8, 'FD');
+
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(5.5);
+                doc.setTextColor(55, 65, 81);
+                doc.text('Nota:', textStartX + 1.2, y + 24.2);
+
+                // Línea de escritura
+                doc.setDrawColor(156, 163, 175);
+                doc.line(textStartX + 7.5, y + 24.8, textStartX + 19.5, y + 24.8);
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(4.2);
+                doc.setTextColor(156, 163, 175);
+                doc.text('Escanear y Calificar', textStartX + 10.4, y + 26.2, { align: 'center' });
+            }
+        }
+
+        // Descarga y compatibilidad con iPhone / Android / PC
+        const pdfBlob = doc.output('blob');
+        const fileName = `Hoja_QR_${user.id}_${nombres.replace(/\s+/g, '_')}.pdf`;
+        const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+            try {
+                await navigator.share({
+                    files: [pdfFile],
+                    title: 'Hoja de QR para Trabajos',
+                    text: `Etiquetas QR recortables para trabajos escolares de ${nombreCompleto}`
+                });
+                showToast('Hoja de QR generada y lista', 'success');
+                if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+                return;
+            } catch(shareErr: any) {
+                if (shareErr.name === 'AbortError') {
+                    if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; }
+                    return;
+                }
+                console.warn('Share API error on PDF, fallback to direct download:', shareErr);
+            }
+        }
+
+        if (isIOS) {
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            window.open(blobUrl, '_blank');
+            showToast('PDF abierto para imprimir o guardar', 'success');
+        } else {
+            doc.save(fileName);
+            showToast('Hoja de QR descargada con éxito (Tamaño Carta)', 'success');
+        }
+
+    } catch (err) {
+        console.error('Error generando hoja PDF de QR:', err);
+        showToast('Error al generar la hoja de QR en PDF', 'error');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+};
+
+document.getElementById('btn-download-qr-sheet')?.addEventListener('click', () => {
+    if (!currentStudentForCarnet) {
+        showToast('Primero consulta o selecciona un carnet', 'warning');
+        return;
+    }
+    generateStudentQrPdfSheet(currentStudentForCarnet);
+});
+
+// ==========================================================
 // CONFIGURACIÓN DE IDENTIDAD Y UI
 // ==========================================================
+// ==========================================================
+// CONFIGURACIÓN DE IDENTIDAD, MULTI-INSTITUCIÓN Y POP-UP
+// ==========================================================
+
+// Parser inteligente para URLs multimedia (YouTube, Canva, Imágenes o Web)
+export const parseMediaUrl = (rawUrl: string): { type: 'youtube' | 'canva' | 'image' | 'web'; embedUrl: string; directUrl: string } => {
+    if (!rawUrl) return { type: 'web', embedUrl: '', directUrl: '' };
+    const url = rawUrl.trim();
+
+    // YouTube: Detectar watch?v=, youtu.be/, shorts/, embed/
+    const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/i);
+    if (ytMatch && ytMatch[1]) {
+        return {
+            type: 'youtube',
+            embedUrl: `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=0&rel=0`,
+            directUrl: url
+        };
+    }
+
+    // Canva: Enlaces de diseño y presentación
+    if (url.includes('canva.com')) {
+        let canvaEmbed = url;
+        if (url.includes('/view') && !url.includes('embed')) {
+            canvaEmbed = url.includes('?') ? `${url}&embed` : `${url}?embed`;
+        }
+        return {
+            type: 'canva',
+            embedUrl: canvaEmbed,
+            directUrl: url
+        };
+    }
+
+    // Imágenes directas
+    if (/\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url) || url.startsWith('data:image/')) {
+        return {
+            type: 'image',
+            embedUrl: url,
+            directUrl: url
+        };
+    }
+
+    // Enlace genérico web
+    return {
+        type: 'web',
+        embedUrl: url,
+        directUrl: url
+    };
+};
+
+// Actualización de Restricciones por Tipo de Plan (Institucional vs Docente Individual vs Prueba)
+export const updatePlanRestrictionsUI = () => {
+    const plan = institucionData.tipoPlan || (currentAccessMode === 'modo_prueba' ? 'prueba' : 'institucional');
+    const headerPlanBadge = document.getElementById('header-plan-badge');
+    const headerPlanText = document.getElementById('header-plan-text');
+    const quickBarPlanName = document.getElementById('quick-bar-plan-name');
+    const quickBarPlanLimit = document.getElementById('quick-bar-plan-limit');
+    const quickBarTitular = document.getElementById('quick-bar-titular');
+    const quickBarDaysLeft = document.getElementById('quick-bar-days-left');
+    const overlayStaffLocked = document.getElementById('overlay-staff-locked');
+    const labelUploadStaff = document.getElementById('label-upload-staff');
+    const excelStaffInput = document.getElementById('excel-staff') as HTMLInputElement;
+
+    // Titular display
+    if (quickBarTitular) {
+        quickBarTitular.innerText = institucionData.titularNombre || institucionData.nombre || 'I.E. Ramón Múnera Lopera';
+    }
+
+    // Days remaining computation
+    const today = getTodayString();
+    const end = institucionData.licenciaFin || '2099-12-31';
+    let daysDiff = Math.ceil((new Date(end).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+    if (quickBarDaysLeft) {
+        if (daysDiff < 0) {
+            quickBarDaysLeft.setAttribute('style', 'background-color: #7f1d1d !important; color: #fecaca !important; border: 1px solid #ef4444 !important; font-weight: bold;');
+            quickBarDaysLeft.innerText = "Vencida";
+        } else if (daysDiff <= 15) {
+            quickBarDaysLeft.setAttribute('style', 'background-color: #78350f !important; color: #fef08a !important; border: 1px solid #f59e0b !important; font-weight: bold;');
+            quickBarDaysLeft.innerText = `${daysDiff} días rest.`;
+        } else {
+            quickBarDaysLeft.setAttribute('style', 'background-color: #064e3b !important; color: #6ee7b7 !important; border: 1px solid #10b981 !important; font-weight: bold;');
+            quickBarDaysLeft.innerText = daysDiff > 9000 ? "Permanente" : `${daysDiff} días`;
+        }
+    }
+
+    if (plan === 'docente') {
+        // Plan Docente Individual (1 persona)
+        if (headerPlanText) headerPlanText.innerText = 'Plan Docente (1 Usuario)';
+        if (headerPlanBadge) {
+            headerPlanBadge.setAttribute('style', 'background-color: #581c87; color: #f3e8ff; border: 1px solid #c084fc;');
+        }
+        if (quickBarPlanName) {
+            quickBarPlanName.setAttribute('style', 'color: #c084fc !important; font-weight: 900;');
+            quickBarPlanName.innerText = "Docente Individual";
+        }
+        if (quickBarPlanLimit) {
+            quickBarPlanLimit.setAttribute('style', 'background-color: #581c87 !important; color: #f3e8ff !important; border: 1px solid #a855f7 !important; font-weight: bold;');
+            quickBarPlanLimit.innerText = "1 Persona";
+        }
+
+        // Restringir cargue de personal
+        if (overlayStaffLocked) {
+            overlayStaffLocked.classList.remove('hidden');
+            overlayStaffLocked.classList.add('flex');
+        }
+        if (labelUploadStaff) {
+            labelUploadStaff.classList.add('opacity-40', 'cursor-not-allowed');
+        }
+        if (excelStaffInput) {
+            excelStaffInput.disabled = true;
+        }
+    } else if (plan === 'prueba') {
+        // Modo Prueba 30 Días
+        if (headerPlanText) headerPlanText.innerText = 'Prueba 30 Días';
+        if (headerPlanBadge) {
+            headerPlanBadge.setAttribute('style', 'background-color: #78350f; color: #fef3c7; border: 1px solid #f59e0b;');
+        }
+        if (quickBarPlanName) {
+            quickBarPlanName.setAttribute('style', 'color: #fbbf24 !important; font-weight: 900;');
+            quickBarPlanName.innerText = "Prueba 30 Días";
+        }
+        if (quickBarPlanLimit) {
+            quickBarPlanLimit.setAttribute('style', 'background-color: #78350f !important; color: #fef08a !important; border: 1px solid #d97706 !important; font-weight: bold;');
+            quickBarPlanLimit.innerText = "Demo";
+        }
+        if (overlayStaffLocked) {
+            overlayStaffLocked.classList.add('hidden');
+            overlayStaffLocked.classList.remove('flex');
+        }
+        if (labelUploadStaff) {
+            labelUploadStaff.classList.remove('opacity-40', 'cursor-not-allowed');
+        }
+        if (excelStaffInput) {
+            excelStaffInput.disabled = false;
+        }
+    } else {
+        // Plan Institucional Completo
+        if (headerPlanText) headerPlanText.innerText = 'Plan Institucional';
+        if (headerPlanBadge) {
+            headerPlanBadge.setAttribute('style', 'background-color: #1e3a8a; color: #dbeafe; border: 1px solid #60a5fa;');
+        }
+        if (quickBarPlanName) {
+            quickBarPlanName.setAttribute('style', 'color: #fbbf24 !important; font-weight: 900;');
+            quickBarPlanName.innerText = "Institucional";
+        }
+        if (quickBarPlanLimit) {
+            quickBarPlanLimit.setAttribute('style', 'background-color: #1e3a8a !important; color: #bfdbfe !important; border: 1px solid #3b82f6 !important; font-weight: bold;');
+            quickBarPlanLimit.innerText = "Multi-Usuario";
+        }
+        if (overlayStaffLocked) {
+            overlayStaffLocked.classList.add('hidden');
+            overlayStaffLocked.classList.remove('flex');
+        }
+        if (labelUploadStaff) {
+            labelUploadStaff.classList.remove('opacity-40', 'cursor-not-allowed');
+        }
+        if (excelStaffInput) {
+            excelStaffInput.disabled = false;
+        }
+    }
+};
+
+// Verificación de Vigencia de Licencia por Fecha Contratada y Modo Prueba 30 Días
+export const checkLicenseValidity = (): boolean => {
+    updatePlanRestrictionsUI();
+    const today = getTodayString();
+    const statusBadge = document.getElementById('license-status-badge');
+    const modalExp = document.getElementById('modal-license-expired');
+    const modalTrialExp = document.getElementById('modal-trial-expired');
+
+    // MODO PRUEBA 30 DÍAS
+    if (currentAccessMode === 'modo_prueba') {
+        if (modalExp) modalExp.classList.add('hidden');
+        const trialStatus = getTrialStatus();
+        const trialInstNameEl = document.getElementById('trial-expired-inst-name');
+        if (trialInstNameEl) trialInstNameEl.innerText = institucionData.nombre;
+
+        if (trialStatus.isExpired) {
+            if (modalTrialExp) modalTrialExp.classList.remove('hidden');
+            if (statusBadge) {
+                statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-800";
+                statusBadge.innerText = "Prueba 30 Días Vencida";
+            }
+            isLicenseValid = false;
+            return false;
+        } else {
+            if (modalTrialExp) modalTrialExp.classList.add('hidden');
+            if (statusBadge) {
+                statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800";
+                statusBadge.innerText = `Prueba Activa (${trialStatus.remainingDays} días)`;
+            }
+            isLicenseValid = true;
+            return true;
+        }
+    }
+
+    // MODO INSTITUCIONAL OFICIAL (RAMÓN MÚNERA)
+    if (modalTrialExp) modalTrialExp.classList.add('hidden');
+
+    const start = institucionData.licenciaInicio || '2000-01-01';
+    const end = institucionData.licenciaFin || '2099-12-31';
+    let valid = true;
+
+    if (today < start) {
+        valid = false;
+        if (statusBadge) {
+            statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800";
+            statusBadge.innerText = `Inicia el ${start}`;
+        }
+    } else if (today > end) {
+        valid = false;
+        if (statusBadge) {
+            statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-800";
+            statusBadge.innerText = `Licencia Vencida (${end})`;
+        }
+    } else {
+        const diffDays = Math.ceil((new Date(end).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+        if (statusBadge) {
+            if (diffDays <= 15) {
+                statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800";
+                statusBadge.innerText = `Por vencer (${diffDays} días)`;
+            } else {
+                statusBadge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-800";
+                statusBadge.innerText = `Licencia Activa (${diffDays} días)`;
+            }
+        }
+    }
+
+    isLicenseValid = valid;
+
+    // Si la licencia no es válida, desplegar pantalla de bloqueo
+    if (!valid) {
+        if (modalExp) {
+            modalExp.classList.remove('hidden');
+            const instNameEl = document.getElementById('license-inst-name');
+            if (instNameEl) instNameEl.innerText = institucionData.nombre;
+            const limitEl = document.getElementById('license-date-limit');
+            if (limitEl) limitEl.innerText = `${start} a ${end}`;
+            const detailsEl = document.getElementById('license-details-text');
+            if (detailsEl) {
+                detailsEl.innerText = today > end 
+                    ? `El periodo de uso contratado para "${institucionData.nombre}" finalizó el ${end}. Por favor contacte al proveedor para renovar el servicio.` 
+                    : `El periodo de uso contratado para "${institucionData.nombre}" está programado para iniciar el ${start}.`;
+            }
+        }
+    } else {
+        if (modalExp) modalExp.classList.add('hidden');
+    }
+
+    return valid;
+};
+
+// Despliegue del Pop-up Vertical de Inicio (Optimizado para Celular)
+export const showStartupPopup = (force = false) => {
+    if (!institucionData.popupActivo && !force) return;
+    
+    // Si no es forzado (ej: desde botón de vista previa), comprobar si ya fue descartado hoy
+    if (!force) {
+        const dismissedDate = localStorage.getItem(`popup_dismissed_${institucionData.id}`);
+        if (dismissedDate === getTodayString()) return;
+    }
+
+    const modal = document.getElementById('modal-startup-popup');
+    if (!modal) return;
+
+    // Configuración visual y textos del Pop-up
+    const titleEl = document.getElementById('popup-title-display');
+    if (titleEl) titleEl.innerText = institucionData.popupTitulo || 'Novedades y Tutorial Institucional';
+
+    const instEl = document.getElementById('popup-inst-display');
+    if (instEl) instEl.innerText = institucionData.nombre;
+
+    const footerInstEl = document.getElementById('popup-footer-inst-name');
+    if (footerInstEl) footerInstEl.innerText = institucionData.nombre;
+
+    const descEl = document.getElementById('popup-description-display');
+    if (descEl) descEl.innerText = institucionData.popupDescripcion || 'Bienvenido al sistema institucional. Consulta el material explicativo preparado para tu institución.';
+
+    // Header color branding
+    const modalHeader = document.getElementById('popup-modal-header');
+    if (modalHeader && institucionData.color1) {
+        modalHeader.style.backgroundColor = institucionData.color1;
+    }
+
+    // Logo
+    const pLogo = document.getElementById('popup-header-logo') as HTMLImageElement;
+    const pLogoBox = document.getElementById('popup-header-logo-container');
+    if (institucionData.logo) {
+        if (pLogo) pLogo.src = institucionData.logo;
+        pLogoBox?.classList.remove('hidden');
+    } else {
+        pLogoBox?.classList.add('hidden');
+    }
+
+    // Procesar Media (YouTube, Canva, Imagen o Enlace)
+    const iframe = document.getElementById('popup-iframe') as HTMLIFrameElement;
+    const img = document.getElementById('popup-image') as HTMLImageElement;
+    const placeholder = document.getElementById('popup-link-placeholder');
+    const directLink = document.getElementById('popup-direct-link') as HTMLAnchorElement;
+    const extActionBtn = document.getElementById('popup-external-action-btn') as HTMLAnchorElement;
+
+    // Resetear estados
+    if (iframe) iframe.src = '';
+    if (img) { img.src = ''; img.classList.add('hidden'); }
+    placeholder?.classList.add('hidden');
+    placeholder?.classList.remove('flex');
+
+    if (institucionData.popupUrl) {
+        const media = parseMediaUrl(institucionData.popupUrl);
+
+        if (media.type === 'youtube' || media.type === 'canva') {
+            if (iframe) {
+                iframe.src = media.embedUrl;
+                iframe.classList.remove('hidden');
+            }
+        } else if (media.type === 'image') {
+            if (iframe) iframe.classList.add('hidden');
+            if (img) {
+                img.src = media.embedUrl;
+                img.classList.remove('hidden');
+            }
+        } else {
+            // Enlace Web general
+            if (iframe) {
+                iframe.src = media.embedUrl;
+                iframe.classList.remove('hidden');
+            }
+            if (placeholder && directLink) {
+                const linkText = document.getElementById('popup-link-text');
+                if (linkText) linkText.innerText = media.directUrl;
+                directLink.href = media.directUrl;
+            }
+        }
+
+        if (extActionBtn) {
+            extActionBtn.href = media.directUrl;
+            extActionBtn.classList.remove('hidden');
+        }
+    } else {
+        if (iframe) iframe.classList.add('hidden');
+        if (placeholder) {
+            placeholder.classList.remove('hidden');
+            placeholder.classList.add('flex');
+            const linkText = document.getElementById('popup-link-text');
+            if (linkText) linkText.innerText = "Configura una URL en el panel de administración.";
+            if (directLink) directLink.classList.add('hidden');
+        }
+        if (extActionBtn) extActionBtn.classList.add('hidden');
+    }
+
+    modal.classList.remove('hidden');
+};
+
+const closeStartupPopup = (dismissForToday = false) => {
+    const modal = document.getElementById('modal-startup-popup');
+    if (modal) modal.classList.add('hidden');
+    
+    // Detener reproducción de video al cerrar
+    const iframe = document.getElementById('popup-iframe') as HTMLIFrameElement;
+    if (iframe) iframe.src = '';
+
+    if (dismissForToday) {
+        localStorage.setItem(`popup_dismissed_${institucionData.id}`, getTodayString());
+        showToast('Preferencia guardada para hoy', 'info', 2000);
+    }
+};
+
+// Event Listeners del Pop-up
+document.getElementById('btn-close-startup-popup')?.addEventListener('click', () => closeStartupPopup(false));
+document.getElementById('btn-popup-dismiss')?.addEventListener('click', () => closeStartupPopup(false));
+document.getElementById('btn-popup-dismiss-today')?.addEventListener('click', () => closeStartupPopup(true));
+
+// Botón para abrir el Pop-Up con la Guía, Video y Credenciales completas desde el acceso móvil
+document.getElementById('btn-open-popup-info')?.addEventListener('click', () => {
+    showStartupPopup(true);
+});
+
+// Acción dentro del Pop-Up para autocompletar credenciales demo 1234
+document.getElementById('btn-popup-autofill-demo')?.addEventListener('click', () => {
+    const sId = document.getElementById('staff-id') as HTMLInputElement;
+    const sPin = document.getElementById('staff-pin') as HTMLInputElement;
+    if (sId) sId.value = '1234';
+    if (sPin) sPin.value = '1234';
+    switchAccessTab('staff');
+    closeStartupPopup(false);
+    showToast('Credenciales Demo 1234 cargadas. Haz clic en "Iniciar Turno".', 'info', 3500);
+});
+
+// Acción dentro del Pop-Up para ir directo a la pestaña de carnet de estudiante
+document.getElementById('btn-popup-goto-student')?.addEventListener('click', () => {
+    closeStartupPopup(false);
+    switchAccessTab('student');
+});
+
+// Acceso Administrador desde pantalla de licencia vencida
+document.getElementById('btn-license-admin-access')?.addEventListener('click', () => {
+    const modalExp = document.getElementById('modal-license-expired');
+    if (modalExp) modalExp.classList.add('hidden');
+    switchTab('admin');
+    const adminPinInput = document.getElementById('admin-pin') as HTMLInputElement;
+    if (adminPinInput) {
+        adminPinInput.value = '';
+        setTimeout(() => adminPinInput.focus(), 150);
+    }
+});
+
+// Actualizar Selector de Instituciones en Admin
+export const renderInstitutionsDropdown = () => {
+    const select = document.getElementById('inst-select') as HTMLSelectElement;
+    if (!select) return;
+    
+    select.innerHTML = '';
+    institucionesList.forEach(inst => {
+        const opt = document.createElement('option');
+        opt.value = inst.id;
+        opt.innerText = inst.nombre;
+        if (inst.id === institucionData.id) opt.selected = true;
+        select.appendChild(opt);
+    });
+};
+
+// Cargar Datos de la Institución Seleccionada en el Formulario
+export const populateAdminInstitutionForm = (inst: InstitutionProfile) => {
+    const iInput = document.getElementById('inst-name-input') as HTMLInputElement;
+    const c1 = document.getElementById('inst-color1') as HTMLInputElement;
+    const c2 = document.getElementById('inst-color2') as HTMLInputElement;
+    const lStart = document.getElementById('inst-licencia-inicio') as HTMLInputElement;
+    const lEnd = document.getElementById('inst-licencia-fin') as HTMLInputElement;
+    const pActive = document.getElementById('inst-popup-active') as HTMLInputElement;
+    const pLabel = document.getElementById('label-popup-active');
+    const pTitle = document.getElementById('inst-popup-title') as HTMLInputElement;
+    const pUrl = document.getElementById('inst-popup-url') as HTMLInputElement;
+    const pDesc = document.getElementById('inst-popup-desc') as HTMLTextAreaElement;
+    const lPrev = document.getElementById('logo-preview') as HTMLImageElement;
+
+    if (iInput) iInput.value = inst.nombre || '';
+    if (c1) c1.value = inst.color1 || '#2563eb';
+    if (c2) c2.value = inst.color2 || '#0ea5e9';
+    if (lStart) lStart.value = inst.licenciaInicio || '2026-01-01';
+    if (lEnd) lEnd.value = inst.licenciaFin || '2027-12-31';
+
+    if (pActive) {
+        pActive.checked = !!inst.popupActivo;
+        if (pLabel) pLabel.innerText = inst.popupActivo ? 'Activado' : 'Desactivado';
+    }
+    if (pTitle) pTitle.value = inst.popupTitulo || '';
+    if (pUrl) pUrl.value = inst.popupUrl || '';
+    if (pDesc) pDesc.value = inst.popupDescripcion || '';
+
+    if (lPrev) {
+        if (inst.logo) {
+            lPrev.src = inst.logo;
+            lPrev.classList.remove('hidden');
+        } else {
+            lPrev.src = '';
+            lPrev.classList.add('hidden');
+        }
+    }
+
+    checkLicenseValidity();
+};
+
 const aplicarConfiguracionUI = () => {
     const hName = document.getElementById('header-inst-name');
-    const iInput = document.getElementById('inst-name-input') as HTMLInputElement;
-    if (institucionData.nombre) { 
-        if (hName) hName.innerText = institucionData.nombre; 
-        if (iInput) iInput.value = institucionData.nombre; 
-    }
+    if (hName && institucionData.nombre) hName.innerText = institucionData.nombre;
+    
+    const hLogo = document.getElementById('header-logo') as HTMLImageElement;
+    const hLogoBox = document.getElementById('header-logo-container');
+    const hDefaultIcon = document.getElementById('header-default-icon');
+    
     if (institucionData.logo) { 
-        const hLogo = document.getElementById('header-logo') as HTMLImageElement;
         if (hLogo) hLogo.src = institucionData.logo; 
-        document.getElementById('header-logo-container')?.classList.remove('hidden'); 
-        document.getElementById('header-default-icon')?.classList.add('hidden'); 
-        const lPrev = document.getElementById('logo-preview') as HTMLImageElement;
-        if (lPrev) { lPrev.src = institucionData.logo; lPrev.classList.remove('hidden'); }
+        hLogoBox?.classList.remove('hidden'); 
+        hDefaultIcon?.classList.add('hidden'); 
+    } else {
+        hLogoBox?.classList.add('hidden');
+        hDefaultIcon?.classList.remove('hidden');
     }
+
+    const mHead = document.getElementById('main-header');
     if (institucionData.color1) { 
-        const c1 = document.getElementById('inst-color1') as HTMLInputElement;
-        if (c1) c1.value = institucionData.color1; 
-        const mHead = document.getElementById('main-header');
         if (mHead) mHead.style.backgroundColor = institucionData.color1; 
         document.getElementById('wave-3')?.setAttribute('fill', institucionData.color1); 
     }
     if (institucionData.color2) { 
-        const c2 = document.getElementById('inst-color2') as HTMLInputElement;
-        if (c2) c2.value = institucionData.color2; 
         document.getElementById('wave-1')?.setAttribute('fill', institucionData.color2); 
         document.getElementById('wave-2')?.setAttribute('fill', institucionData.color2); 
     }
+
+    renderInstitutionsDropdown();
+    populateAdminInstitutionForm(institucionData);
+    updateModeUI();
 };
 
+// Cambio en Selector de Institución
+document.getElementById('inst-select')?.addEventListener('change', (e: any) => {
+    const selectedId = e.target.value;
+    const found = institucionesList.find(i => i.id === selectedId);
+    if (found) {
+        institucionData = { ...found };
+        aplicarConfiguracionUI();
+        showToast(`Institución cambiada: ${institucionData.nombre}`, 'info', 2000);
+    }
+});
+
+// Agregar Nueva Institución
+document.getElementById('btn-new-inst')?.addEventListener('click', () => {
+    const nombre = prompt("Nombre de la Nueva Institución Educativa:");
+    if (!nombre || !nombre.trim()) return;
+
+    const cleanId = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20) + '_' + Date.now().toString().slice(-4);
+    const newInst: InstitutionProfile = {
+        id: cleanId,
+        nombre: nombre.trim(),
+        logo: null,
+        color1: "#2563eb",
+        color2: "#0ea5e9",
+        licenciaInicio: getTodayString(),
+        licenciaFin: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        tipoPlan: 'institucional',
+        limiteUsuarios: 9999,
+        titularNombre: nombre.trim(),
+        popupActivo: false,
+        popupTitulo: `Bienvenido a ${nombre.trim()}`,
+        popupUrl: "",
+        popupDescripcion: "Información y tutorial de la plataforma."
+    };
+
+    institucionesList.push(newInst);
+    institucionData = { ...newInst };
+    aplicarConfiguracionUI();
+    showToast(`Institución "${nombre}" agregada. Ajusta sus datos y guarda.`, 'success', 4000);
+});
+
+// Eliminar Institución Actual
+document.getElementById('btn-del-inst')?.addEventListener('click', () => {
+    if (institucionesList.length <= 1) {
+        return showToast('Debe existir al menos una institución en el sistema.', 'warning');
+    }
+    if (confirm(`¿Eliminar la institución "${institucionData.nombre}" de la lista?`)) {
+        institucionesList = institucionesList.filter(i => i.id !== institucionData.id);
+        institucionData = { ...institucionesList[0] };
+        aplicarConfiguracionUI();
+        showToast('Institución eliminada.', 'info');
+    }
+});
+
+// Toggle del Switch de Pop-up
+document.getElementById('inst-popup-active')?.addEventListener('change', (e: any) => {
+    const pLabel = document.getElementById('label-popup-active');
+    if (pLabel) pLabel.innerText = e.target.checked ? 'Activado' : 'Desactivado';
+});
+
+// Actualización en vivo del badge de vigencia al cambiar fechas
+document.getElementById('inst-licencia-inicio')?.addEventListener('input', (e: any) => {
+    institucionData.licenciaInicio = e.target.value;
+    checkLicenseValidity();
+});
+document.getElementById('inst-licencia-fin')?.addEventListener('input', (e: any) => {
+    institucionData.licenciaFin = e.target.value;
+    checkLicenseValidity();
+});
+
+// Vista Previa Inmediata del Pop-up desde el Panel de Configuración
+document.getElementById('btn-preview-popup')?.addEventListener('click', () => {
+    const pTitle = (document.getElementById('inst-popup-title') as HTMLInputElement)?.value;
+    const pUrl = (document.getElementById('inst-popup-url') as HTMLInputElement)?.value;
+    const pDesc = (document.getElementById('inst-popup-desc') as HTMLTextAreaElement)?.value;
+    const pActive = (document.getElementById('inst-popup-active') as HTMLInputElement)?.checked;
+
+    // Temporal para previsualizar
+    institucionData.popupTitulo = pTitle;
+    institucionData.popupUrl = pUrl;
+    institucionData.popupDescripcion = pDesc;
+    institucionData.popupActivo = pActive;
+
+    showStartupPopup(true);
+});
+
+// Carga de Logo Institucional
 document.getElementById('inst-logo-input')?.addEventListener('change', (e: any) => {
     const file = e.target.files[0]; 
     if (file) { 
@@ -1968,7 +3269,10 @@ document.getElementById('inst-logo-input')?.addEventListener('change', (e: any) 
                 ctx?.drawImage(img, 0, 0, canvas.width, canvas.height); 
                 institucionData.logo = canvas.toDataURL('image/png'); 
                 const lPrev = document.getElementById('logo-preview') as HTMLImageElement;
-                if (lPrev) { lPrev.src = institucionData.logo; lPrev.classList.remove('hidden'); }
+                if (lPrev) { 
+                    lPrev.src = institucionData.logo; 
+                    lPrev.classList.remove('hidden'); 
+                }
             }; 
             img.src = event.target.result; 
         }; 
@@ -1976,27 +3280,82 @@ document.getElementById('inst-logo-input')?.addEventListener('change', (e: any) 
     }
 });
 
+// Guardar y Aplicar a la Institución
 document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-save-settings') as HTMLButtonElement; 
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Guardando...'; 
     btn.disabled = true;
+
     const iInput = document.getElementById('inst-name-input') as HTMLInputElement;
     const c1 = document.getElementById('inst-color1') as HTMLInputElement;
     const c2 = document.getElementById('inst-color2') as HTMLInputElement;
-    institucionData.nombre = iInput?.value.trim() || 'Gestor Académico RM'; 
+    const lStart = document.getElementById('inst-licencia-inicio') as HTMLInputElement;
+    const lEnd = document.getElementById('inst-licencia-fin') as HTMLInputElement;
+    const pActive = document.getElementById('inst-popup-active') as HTMLInputElement;
+    const pTitle = document.getElementById('inst-popup-title') as HTMLInputElement;
+    const pUrl = document.getElementById('inst-popup-url') as HTMLInputElement;
+    const pDesc = document.getElementById('inst-popup-desc') as HTMLTextAreaElement;
+
+    // En Modo Prueba (30 Días), guardar en la partición aislada de prueba
+    if (currentAccessMode === 'modo_prueba') {
+        institucionData.nombre = iInput?.value.trim() || 'Institución Educativa (Modo Prueba)'; 
+        institucionData.color1 = c1?.value || '#4f46e5'; 
+        institucionData.color2 = c2?.value || '#06b6d4';
+        institucionData.licenciaInicio = lStart?.value || getTodayString();
+        institucionData.licenciaFin = lEnd?.value || getTodayString();
+        institucionData.popupActivo = !!pActive?.checked;
+        institucionData.popupTitulo = pTitle?.value.trim() || '';
+        institucionData.popupUrl = pUrl?.value.trim() || '';
+        institucionData.popupDescripcion = pDesc?.value.trim() || '';
+
+        localStorage.setItem('trial_institution_profile', JSON.stringify(institucionData));
+        try {
+            await setDoc(getSettingsPath(), institucionData);
+        } catch(e) {}
+
+        aplicarConfiguracionUI();
+        showToast('Configuración y Pop-up de tu colegio en prueba guardados con éxito.', 'success');
+        btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar y Aplicar a la Institución'; 
+        btn.disabled = false;
+        return;
+    }
+
+    // Actualizar datos del objeto activo (Modo Oficial)
+    institucionData.nombre = iInput?.value.trim() || 'Gestor Académico'; 
     institucionData.color1 = c1?.value || '#2563eb'; 
     institucionData.color2 = c2?.value || '#0ea5e9';
-    
+    institucionData.licenciaInicio = lStart?.value || '2026-01-01';
+    institucionData.licenciaFin = lEnd?.value || '2027-12-31';
+    institucionData.popupActivo = !!pActive?.checked;
+    institucionData.popupTitulo = pTitle?.value.trim() || '';
+    institucionData.popupUrl = pUrl?.value.trim() || '';
+    institucionData.popupDescripcion = pDesc?.value.trim() || '';
+
+    // Actualizar en la lista de instituciones
+    const idx = institucionesList.findIndex(i => i.id === institucionData.id);
+    if (idx !== -1) {
+        institucionesList[idx] = { ...institucionData };
+    } else {
+        institucionesList.push({ ...institucionData });
+    }
+
+    const payloadToSave = {
+        institucionActivaId: institucionData.id,
+        institucionActiva: institucionData,
+        instituciones: institucionesList
+    };
+
     try { 
-        await setDoc(getSettingsPath(), institucionData); 
+        await setDoc(getSettingsPath(), payloadToSave); 
+        localStorage.setItem('institucionData', JSON.stringify(payloadToSave)); 
         aplicarConfiguracionUI(); 
-        showToast('Identidad guardada.', 'success'); 
+        showToast('Configuración institucional y vigencia guardadas con éxito.', 'success'); 
     } catch (error) { 
-        localStorage.setItem('institucionData', JSON.stringify(institucionData)); 
+        localStorage.setItem('institucionData', JSON.stringify(payloadToSave)); 
         aplicarConfiguracionUI(); 
         showToast('Guardado localmente.', 'warning'); 
     } finally { 
-        btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar Identidad'; 
+        btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar y Aplicar a la Institución'; 
         btn.disabled = false; 
     }
 });
@@ -2007,6 +3366,11 @@ document.getElementById('excel-students')?.addEventListener('change', (e: any) =
     e.target.value=''; 
 });
 document.getElementById('excel-staff')?.addEventListener('change', (e: any) => { 
+    if (institucionData.tipoPlan === 'docente') {
+        showPlanRestrictionModal();
+        e.target.value = '';
+        return;
+    }
     if(e.target.files[0]) processExcelUpload(e.target.files[0], 'staff'); 
     e.target.value=''; 
 });
@@ -2021,6 +3385,20 @@ document.getElementById('excel-pae')?.addEventListener('change', (e: any) => {
 document.getElementById('excel-pae-staff')?.addEventListener('change', (e: any) => { 
     if(e.target.files[0]) processExcelUpload(e.target.files[0], 'pae'); 
     e.target.value=''; 
+});
+
+// Modal de Restricción de Plan Docente Individual
+export const showPlanRestrictionModal = () => {
+    const modal = document.getElementById('modal-plan-restriction');
+    if (modal) modal.classList.remove('hidden');
+};
+
+document.getElementById('btn-close-plan-restriction')?.addEventListener('click', () => {
+    document.getElementById('modal-plan-restriction')?.classList.add('hidden');
+});
+
+document.getElementById('overlay-staff-locked')?.addEventListener('click', () => {
+    showPlanRestrictionModal();
 });
 
 // Roles y Permisos
@@ -2049,6 +3427,327 @@ document.getElementById('btn-save-roles')?.addEventListener('click', async () =>
     rolePermissions = newPerms; 
     showToast('Permisos guardados', 'success'); 
     if (currentStaff) applyRolesUI(currentStaff);
+});
+
+// =========================================================================
+// MÓDULO SUPER-ADMINISTRADOR (Ventas, Licencias, Fechas y Roles) - www.espatodo.com
+// =========================================================================
+let superAdminPin = localStorage.getItem('sa_master_pin') || 'superadmin';
+let isSuperAdminAuthenticated = false;
+
+export const openSuperAdminLogin = () => {
+    const modalLogin = document.getElementById('modal-superadmin-login');
+    const pinInput = document.getElementById('sa-login-pin') as HTMLInputElement;
+    if (modalLogin) modalLogin.classList.remove('hidden');
+    if (pinInput) {
+        pinInput.value = '';
+        setTimeout(() => pinInput.focus(), 120);
+    }
+};
+
+export const closeSuperAdminLogin = () => {
+    document.getElementById('modal-superadmin-login')?.classList.add('hidden');
+};
+
+export const openSuperAdminModal = () => {
+    closeSuperAdminLogin();
+    const modal = document.getElementById('modal-superadmin');
+    if (!modal) return;
+    
+    // Asignar inputs con los datos de la institución activa
+    const tNombre = document.getElementById('sa-titular-nombre') as HTMLInputElement;
+    const tDoc = document.getElementById('sa-titular-doc') as HTMLInputElement;
+    const tContacto = document.getElementById('sa-titular-contacto') as HTMLInputElement;
+    const lStart = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
+    const lEnd = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+    const mPin = document.getElementById('sa-master-pin') as HTMLInputElement;
+
+    if (tNombre) tNombre.value = institucionData.titularNombre || institucionData.nombre || '';
+    if (tDoc) tDoc.value = institucionData.titularDoc || '';
+    if (tContacto) tContacto.value = institucionData.titularContacto || '';
+    if (lStart) lStart.value = institucionData.licenciaInicio || '2026-01-01';
+    if (lEnd) lEnd.value = institucionData.licenciaFin || '2027-12-31';
+    if (mPin) mPin.value = '';
+
+    // Seleccionar plan activo
+    const activePlan = institucionData.tipoPlan || (currentAccessMode === 'modo_prueba' ? 'prueba' : 'institucional');
+    selectSuperAdminPlan(activePlan);
+
+    // Actualizar contador
+    updateSuperAdminCountdown();
+
+    // Renderizar matriz de roles
+    renderSuperAdminRolesMatrix();
+
+    modal.classList.remove('hidden');
+};
+
+export const closeSuperAdminModal = () => {
+    document.getElementById('modal-superadmin')?.classList.add('hidden');
+};
+
+export const selectSuperAdminPlan = (plan: LicenseType) => {
+    const cards = document.querySelectorAll('.sa-plan-card');
+    cards.forEach((c: any) => {
+        const radio = c.querySelector('input[name="sa_plan_choice"]');
+        if (radio && radio.value === plan) {
+            radio.checked = true;
+            c.className = "sa-plan-card relative flex flex-col p-4 rounded-2xl border-2 cursor-pointer transition-all border-amber-500 bg-amber-500/15 shadow-md shadow-amber-500/10";
+        } else {
+            if (radio) radio.checked = false;
+            c.className = "sa-plan-card relative flex flex-col p-4 rounded-2xl border-2 cursor-pointer transition-all border-gray-700 bg-gray-800/50 hover:border-gray-600";
+        }
+    });
+
+    const pill = document.getElementById('sa-active-plan-pill');
+    if (pill) {
+        if (plan === 'docente') {
+            pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 uppercase";
+            pill.innerText = "Plan Docente Individual (1 Usuario)";
+        } else if (plan === 'prueba') {
+            pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 uppercase";
+            pill.innerText = "Modo Prueba 30 Días";
+        } else {
+            pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 uppercase";
+            pill.innerText = "Plan Institucional Completo";
+        }
+    }
+};
+
+export const updateSuperAdminCountdown = () => {
+    const lEnd = (document.getElementById('sa-licencia-fin') as HTMLInputElement)?.value;
+    const lStart = (document.getElementById('sa-licencia-inicio') as HTMLInputElement)?.value;
+    const today = getTodayString();
+    const countdownEl = document.getElementById('sa-license-countdown');
+    if (!countdownEl || !lEnd) return;
+
+    if (today < lStart) {
+        countdownEl.className = "text-xs font-black px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40";
+        countdownEl.innerText = `Programada para iniciar: ${lStart}`;
+    } else if (today > lEnd) {
+        countdownEl.className = "text-xs font-black px-3 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/40";
+        countdownEl.innerText = `Vencida (${lEnd})`;
+    } else {
+        const diffDays = Math.ceil((new Date(lEnd).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays > 9000) {
+            countdownEl.className = "text-xs font-black px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+            countdownEl.innerText = "Acceso Permanente (2099)";
+        } else {
+            countdownEl.className = "text-xs font-black px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+            countdownEl.innerText = `Licencia Activa (${diffDays} días restantes)`;
+        }
+    }
+};
+
+export const renderSuperAdminRolesMatrix = () => {
+    const container = document.getElementById('sa-roles-matrix-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const roleDefs = [
+        { key: 'administrador', name: 'Administrador / Rectoría', icon: 'fa-shield-alt', desc: 'Control total de la institución y configuración' },
+        { key: 'coordinador', name: 'Coordinación Académica', icon: 'fa-user-graduate', desc: 'Asistencia general, observación y autorizaciones' },
+        { key: 'docente', name: 'Docente Titular', icon: 'fa-chalkboard-teacher', desc: 'Asistencia de aula, planilla de notas y evaluaciones' },
+        { key: 'vigilante', name: 'Seguridad / Portería', icon: 'fa-door-open', desc: 'Control de ingresos y salidas en puerta' }
+    ];
+
+    roleDefs.forEach(r => {
+        let html = `
+        <div class="p-3.5 bg-gray-900/90 rounded-xl border border-gray-700/80">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fas ${r.icon} text-amber-400"></i>
+                    <h4 class="font-black text-xs text-white uppercase tracking-wider">${r.name}</h4>
+                </div>
+                <span class="text-[10px] text-gray-400 font-medium">${r.desc}</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-800">
+        `;
+        modulesList.forEach(m => {
+            const isChecked = rolePermissions[r.key]?.includes(m.id) ? 'checked' : '';
+            html += `
+            <label class="flex items-center gap-1.5 text-[11px] text-gray-300 hover:text-white cursor-pointer select-none">
+                <input type="checkbox" class="sa-role-cb rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" data-role="${r.key}" data-module="${m.id}" ${isChecked}>
+                <span>${m.name}</span>
+            </label>
+            `;
+        });
+        html += `</div></div>`;
+        container.innerHTML += html;
+    });
+};
+
+export const saveSuperAdminConfig = async () => {
+    const btnSave = document.getElementById('btn-sa-save') as HTMLButtonElement;
+    if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
+    }
+
+    try {
+        const planRadio = document.querySelector('input[name="sa_plan_choice"]:checked') as HTMLInputElement;
+        const chosenPlan = (planRadio?.value || 'institucional') as LicenseType;
+        const tNombre = (document.getElementById('sa-titular-nombre') as HTMLInputElement)?.value.trim();
+        const tDoc = (document.getElementById('sa-titular-doc') as HTMLInputElement)?.value.trim();
+        const tContacto = (document.getElementById('sa-titular-contacto') as HTMLInputElement)?.value.trim();
+        const lStart = (document.getElementById('sa-licencia-inicio') as HTMLInputElement)?.value || '2026-01-01';
+        const lEnd = (document.getElementById('sa-licencia-fin') as HTMLInputElement)?.value || '2027-12-31';
+
+        // Actualizar institucionData
+        institucionData.tipoPlan = chosenPlan;
+        institucionData.limiteUsuarios = chosenPlan === 'docente' ? 1 : 9999;
+        if (tNombre) {
+            institucionData.titularNombre = tNombre;
+            institucionData.nombre = tNombre;
+        }
+        if (tDoc) institucionData.titularDoc = tDoc;
+        if (tContacto) institucionData.titularContacto = tContacto;
+        institucionData.licenciaInicio = lStart;
+        institucionData.licenciaFin = lEnd;
+
+        // Actualizar permisos de roles desde la matriz
+        const newPerms: Record<string, string[]> = { docente: [], vigilante: [], coordinador: [], administrador: [] };
+        document.querySelectorAll('.sa-role-cb').forEach((cb: any) => {
+            if (cb.checked) {
+                const r = cb.dataset.role;
+                const m = cb.dataset.module;
+                if (!newPerms[r]) newPerms[r] = [];
+                newPerms[r].push(m);
+            }
+        });
+        rolePermissions = newPerms;
+
+        // Guardar en Firestore
+        try {
+            await setDoc(getSettingsPath(), { ...institucionData });
+            await setDoc(doc(db, 'configuracion_app', 'superadmin_config'), {
+                tipoPlan: chosenPlan,
+                titularNombre: tNombre,
+                titularDoc: tDoc,
+                titularContacto: tContacto,
+                licenciaInicio: lStart,
+                licenciaFin: lEnd,
+                rolePermissions,
+                updatedAt: new Date().toISOString()
+            });
+            await setDoc(getPermissionsPath(), rolePermissions);
+        } catch(e) {}
+
+        // Guardar en localStorage
+        localStorage.setItem('institucionData', JSON.stringify({ institucionActiva: institucionData }));
+        localStorage.setItem('rolePermissions', JSON.stringify(rolePermissions));
+
+        // Refrescar UI
+        updatePlanRestrictionsUI();
+        checkLicenseValidity();
+        aplicarConfiguracionUI();
+        renderRolesConfig();
+        if (currentStaff) applyRolesUI(currentStaff);
+
+        closeSuperAdminModal();
+        showToast(`Licencia Super-Admin guardada: Plan ${chosenPlan.toUpperCase()}`, 'success', 4000);
+    } catch(err) {
+        showToast('Error al guardar configuración Super-Admin', 'error');
+    } finally {
+        if (btnSave) {
+            btnSave.disabled = false;
+            btnSave.innerHTML = '<i class="fas fa-save mr-1"></i> Guardar y Aplicar Licencia';
+        }
+    }
+};
+
+// Eventos de Super-Administrador
+document.getElementById('btn-header-superadmin')?.addEventListener('click', () => {
+    if (isSuperAdminAuthenticated) openSuperAdminModal();
+    else openSuperAdminLogin();
+});
+
+document.getElementById('header-plan-badge')?.addEventListener('click', () => {
+    if (isSuperAdminAuthenticated) openSuperAdminModal();
+    else openSuperAdminLogin();
+});
+
+document.getElementById('btn-open-superadmin-login')?.addEventListener('click', () => {
+    openSuperAdminLogin();
+});
+
+document.getElementById('btn-open-superadmin-modal')?.addEventListener('click', () => {
+    if (isSuperAdminAuthenticated) openSuperAdminModal();
+    else openSuperAdminLogin();
+});
+
+document.getElementById('btn-close-sa-login-x')?.addEventListener('click', () => closeSuperAdminLogin());
+document.getElementById('btn-sa-login-cancel')?.addEventListener('click', () => closeSuperAdminLogin());
+
+document.getElementById('btn-sa-login-submit')?.addEventListener('click', () => {
+    const pin = (document.getElementById('sa-login-pin') as HTMLInputElement)?.value.trim();
+    if (pin === superAdminPin || pin === 'superadmin' || pin === 'espatodo777' || pin === 'admin777') {
+        isSuperAdminAuthenticated = true;
+        closeSuperAdminLogin();
+        openSuperAdminModal();
+        showToast('Autenticado como Super-Administrador (www.espatodo.com)', 'success');
+    } else {
+        showToast('Clave de Super-Administrador incorrecta', 'error');
+    }
+});
+
+document.getElementById('sa-login-pin')?.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        document.getElementById('btn-sa-login-submit')?.click();
+    }
+});
+
+document.getElementById('btn-close-superadmin')?.addEventListener('click', () => closeSuperAdminModal());
+document.getElementById('btn-sa-cancel')?.addEventListener('click', () => closeSuperAdminModal());
+document.getElementById('btn-sa-save')?.addEventListener('click', () => saveSuperAdminConfig());
+
+// Botones de Extensión Rápida de Fecha
+document.querySelectorAll('.sa-btn-quick-date').forEach(btn => {
+    btn.addEventListener('click', (e: any) => {
+        const days = parseInt(e.currentTarget.dataset.days || '30', 10);
+        const lEnd = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+        if (!lEnd) return;
+
+        if (days === 0) {
+            // Vencer / Bloquear hoy
+            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            lEnd.value = yesterday;
+        } else if (days >= 90000) {
+            // Acceso permanente
+            lEnd.value = '2099-12-31';
+        } else {
+            const baseDate = new Date();
+            const futureDate = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+            lEnd.value = futureDate.toISOString().split('T')[0];
+        }
+        updateSuperAdminCountdown();
+        showToast(`Fecha de vencimiento actualizada a ${lEnd.value}`, 'info', 2000);
+    });
+});
+
+// Selección de Plan en Super-Admin
+document.querySelectorAll('.sa-plan-card').forEach(card => {
+    card.addEventListener('click', (e: any) => {
+        const radio = card.querySelector('input[name="sa_plan_choice"]') as HTMLInputElement;
+        if (radio) {
+            selectSuperAdminPlan(radio.value as LicenseType);
+        }
+    });
+});
+
+document.getElementById('sa-licencia-inicio')?.addEventListener('input', () => updateSuperAdminCountdown());
+document.getElementById('sa-licencia-fin')?.addEventListener('input', () => updateSuperAdminCountdown());
+
+// Actualizar clave maestra de Super-Admin
+document.getElementById('btn-save-master-pin')?.addEventListener('click', () => {
+    const pin = (document.getElementById('sa-master-pin') as HTMLInputElement)?.value.trim();
+    if (!pin || pin.length < 4) return showToast('La clave debe tener al menos 4 caracteres', 'warning');
+    superAdminPin = pin;
+    localStorage.setItem('sa_master_pin', pin);
+    try {
+        setDoc(doc(db, 'configuracion_app', 'superadmin_auth'), { pin, updatedAt: new Date().toISOString() });
+    } catch(e) {}
+    showToast('Clave maestra de Super-Administrador actualizada', 'success');
 });
 
 // Formatear Sistema
@@ -2096,6 +3795,7 @@ const switchTab = (tab: string) => {
 
 document.getElementById('btn-admin-gear')?.addEventListener('click', () => switchTab('admin'));
 document.getElementById('btn-back-from-login')?.addEventListener('click', () => switchTab('scanner'));
+document.getElementById('btn-admin-back-top')?.addEventListener('click', () => switchTab('scanner'));
 document.getElementById('btn-admin-logout')?.addEventListener('click', () => { 
     document.getElementById('admin-panel')?.classList.add('hidden'); 
     document.getElementById('admin-panel')?.classList.remove('flex'); 
@@ -2106,13 +3806,23 @@ document.getElementById('btn-admin-logout')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-admin-login')?.addEventListener('click', () => {
-    const pin = document.getElementById('admin-pin') as HTMLInputElement;
-    if (pin?.value === 'profe123') { 
+    const pin = (document.getElementById('admin-pin') as HTMLInputElement)?.value.trim();
+    if (pin === superAdminPin || pin === 'superadmin' || pin === 'espatodo777' || pin === 'admin777') {
+        isSuperAdminAuthenticated = true;
+        document.getElementById('admin-login')?.classList.add('hidden');
+        document.getElementById('admin-panel')?.classList.remove('hidden'); 
+        document.getElementById('admin-panel')?.classList.add('flex');
+        openSuperAdminModal();
+        showToast('Bienvenido, Super-Administrador (www.espatodo.com)', 'success');
+        return;
+    }
+    const isValid = pin === 'profe123' || (currentAccessMode === 'modo_prueba' && (pin === '1234' || pin === 'admin'));
+    if (isValid) { 
         document.getElementById('admin-login')?.classList.add('hidden');
         document.getElementById('admin-panel')?.classList.remove('hidden'); 
         document.getElementById('admin-panel')?.classList.add('flex');
     } else {
-        showToast('Clave de administrador incorrecta', 'error');
+        showToast('Clave de administrador incorrecta (Para demo usa 1234)', 'error');
     }
 });
 
@@ -2189,6 +3899,73 @@ const updateModeUI = () => {
         masterBar?.classList.remove('flex');
     }
 
+    // Actualización de UI según Modo (Prueba 30 Días vs Ramón Múnera)
+    const trialBanner = document.getElementById('trial-banner');
+    const trialDaysLeftEl = document.getElementById('trial-days-left-text');
+    const trialCredentialsBox = document.getElementById('trial-quick-credentials');
+    const loginModeName = document.getElementById('login-mode-name');
+    const loginModeLabel = document.getElementById('login-mode-label');
+    const loginModeStatusTag = document.getElementById('login-mode-status-tag');
+    const loginModeIcon = document.getElementById('login-mode-icon');
+    const toggleTrialBtnText = document.getElementById('toggle-trial-mode-text');
+    const loginCardSubtitle = document.getElementById('login-card-subtitle');
+
+    if (currentAccessMode === 'modo_prueba') {
+        const trialStatus = getTrialStatus();
+        if (trialBanner) {
+            trialBanner.classList.remove('hidden');
+            if (trialDaysLeftEl) {
+                trialDaysLeftEl.innerText = `Modo Prueba Universal: Le quedan ${trialStatus.remainingDays} días de 30. Adquiere en www.espatodo.com`;
+            }
+        }
+        if (loginModeName) loginModeName.innerText = institucionData.nombre;
+        if (loginModeLabel) loginModeLabel.innerText = "Entorno de Prueba Aislado";
+        if (loginModeStatusTag) {
+            loginModeStatusTag.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+            loginModeStatusTag.innerText = `Prueba (${trialStatus.remainingDays} días)`;
+        }
+        if (loginModeIcon) loginModeIcon.className = "fas fa-vial text-amber-600 text-lg flex-shrink-0";
+        if (toggleTrialBtnText) toggleTrialBtnText.innerText = "Ir a Ramón Múnera";
+        if (trialCredentialsBox) trialCredentialsBox.classList.remove('hidden');
+        if (loginCardSubtitle) loginCardSubtitle.innerText = "Modo Prueba: Inicia con Doc: 1234 / Clave: 1234";
+
+        const trialChip = document.getElementById('login-trial-status-chip');
+        if (trialChip) {
+            trialChip.classList.remove('hidden');
+            trialChip.innerText = `Prueba (${trialStatus.remainingDays} d)`;
+        }
+
+        const badge = document.getElementById('firebase-status-badge');
+        if (badge) {
+            badge.className = "text-[10px] bg-amber-800 text-amber-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1";
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Modo Prueba (30 Días)';
+        }
+    } else {
+        // ramon_munera
+        if (trialBanner) trialBanner.classList.add('hidden');
+        if (loginModeName) loginModeName.innerText = institucionData.nombre;
+        if (loginModeLabel) loginModeLabel.innerText = "Institución Oficial";
+        if (loginModeStatusTag) {
+            loginModeStatusTag.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800";
+            loginModeStatusTag.innerText = "Licencia Anual Activa";
+        }
+        if (loginModeIcon) loginModeIcon.className = "fas fa-university text-blue-600 text-lg flex-shrink-0";
+        if (toggleTrialBtnText) toggleTrialBtnText.innerText = "Probar otra I.E.";
+        if (trialCredentialsBox) trialCredentialsBox.classList.add('hidden');
+        if (loginCardSubtitle) loginCardSubtitle.innerText = "Inicia turno para operar el sistema.";
+
+        const trialChip = document.getElementById('login-trial-status-chip');
+        if (trialChip) {
+            trialChip.classList.add('hidden');
+        }
+
+        const badge = document.getElementById('firebase-status-badge');
+        if (badge) {
+            badge.className = "text-[10px] bg-blue-800 text-blue-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1";
+            badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> BD Sincronizada';
+        }
+    }
+
     loanTempStudent = null; 
     document.getElementById('loan-status-bar')?.classList.add('hidden');
     document.getElementById('btn-view-active-loans')?.classList.toggle('hidden', appMode !== 'prestamo');
@@ -2230,6 +4007,20 @@ document.querySelectorAll('.ef-phase-btn').forEach(btn => {
 });
 
 // Login de personal
+document.getElementById('staff-id')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        (document.getElementById('staff-pin') as HTMLInputElement)?.focus();
+    }
+});
+
+document.getElementById('staff-pin')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        (document.getElementById('btn-staff-login') as HTMLButtonElement)?.click();
+    }
+});
+
 document.getElementById('btn-staff-login')?.addEventListener('click', async () => {
     const sId = document.getElementById('staff-id') as HTMLInputElement;
     const sPin = document.getElementById('staff-pin') as HTMLInputElement;
@@ -2239,6 +4030,22 @@ document.getElementById('btn-staff-login')?.addEventListener('click', async () =
     
     const staff = staffDict[id];
     if (staff && pin === (staff.clave || staff.id)) {
+        // Restricción para Plan Docente Individual (1 solo usuario autorizado)
+        if (institucionData.tipoPlan === 'docente') {
+            if (institucionData.titularDoc && institucionData.titularDoc.trim()) {
+                if (id !== institucionData.titularDoc.trim()) {
+                    showToast(`Licencia Docente Individual: Solo el titular autorizado (${institucionData.titularDoc}) tiene acceso. Adquiere el Plan Institucional en www.espatodo.com para habilitar a todo el personal`, 'error', 6000);
+                    return;
+                }
+            } else {
+                // Vincular al primer docente que ingresa
+                institucionData.titularDoc = id;
+                try {
+                    await setDoc(getSettingsPath(), { ...institucionData });
+                } catch(e) {}
+            }
+        }
+
         currentStaff = staff; 
         const sDisp = document.getElementById('current-staff-display');
         if (sDisp) sDisp.innerHTML = `<i class="fas fa-user-check mr-1"></i> ${currentStaff.nombre}`;
@@ -2536,18 +4343,74 @@ const initApp = async () => {
         dDisplay.innerText = new Date().toLocaleDateString('es-CO', { weekday: 'short', month: 'short', day: 'numeric' });
     }
     
+    // 1. Detectar Parámetros de Acceso en la URL o Preferencia Guardada
+    const urlParams = new URLSearchParams(window.location.search);
+    const instParam = (urlParams.get('inst') || urlParams.get('colegio') || urlParams.get('modo') || '').toLowerCase().trim();
+
+    if (instParam === 'rm' || instParam === 'ramon_munera' || instParam === 'oficial') {
+        currentAccessMode = 'ramon_munera';
+    } else if (instParam === 'prueba' || instParam === 'demo' || instParam === 'trial' || instParam === 'test') {
+        currentAccessMode = 'modo_prueba';
+    } else {
+        const savedMode = localStorage.getItem('active_access_mode');
+        if (savedMode === 'modo_prueba' || savedMode === 'ramon_munera') {
+            currentAccessMode = savedMode as any;
+        } else {
+            // Si el visitante proviene de www.espatodo.com o enlace general abierto sin parámetro específico
+            const referrer = document.referrer ? document.referrer.toLowerCase() : '';
+            if (referrer.includes('espatodo.com')) {
+                currentAccessMode = 'modo_prueba';
+            } else {
+                currentAccessMode = 'ramon_munera';
+            }
+        }
+    }
+
+    localStorage.setItem('active_access_mode', currentAccessMode);
+
     try { 
         await signInAnonymously(auth); 
-        const localData = localStorage.getItem('institucionData'); 
-        if (localData) { 
-            institucionData = JSON.parse(localData); 
-            aplicarConfiguracionUI(); 
-        }
-        await loadDatabases();
     } catch (error) { 
         console.warn("Conexión inicial Firebase:", error);
-        loadDatabases();
     }
+
+    await loadDatabases();
+    aplicarConfiguracionUI();
+    checkLicenseValidity();
+
+    // Mostrar el Pop-up Vertical al iniciar si está habilitado
+    setTimeout(() => {
+        showStartupPopup(false);
+    }, 600);
 };
+
+// Event Listeners para Modo Prueba y Selector Institucional
+document.getElementById('btn-toggle-trial-mode')?.addEventListener('click', () => {
+    const nextMode = currentAccessMode === 'ramon_munera' ? 'modo_prueba' : 'ramon_munera';
+    switchAccessMode(nextMode);
+});
+
+document.getElementById('btn-header-switch-mode')?.addEventListener('click', () => {
+    const nextMode = currentAccessMode === 'ramon_munera' ? 'modo_prueba' : 'ramon_munera';
+    switchAccessMode(nextMode);
+});
+
+document.getElementById('btn-fill-demo-credentials')?.addEventListener('click', () => {
+    const sId = document.getElementById('staff-id') as HTMLInputElement;
+    const sPin = document.getElementById('staff-pin') as HTMLInputElement;
+    if (sId) sId.value = '1234';
+    if (sPin) sPin.value = '1234';
+    showToast('Credenciales demo ingresadas: Doc: 1234 / Clave: 1234. Haz clic en "Iniciar Turno".', 'info', 3000);
+});
+
+document.getElementById('btn-trial-admin-access')?.addEventListener('click', () => {
+    document.getElementById('modal-trial-expired')?.classList.add('hidden');
+    switchTab('admin');
+    const adminPinInput = document.getElementById('admin-pin') as HTMLInputElement;
+    if (adminPinInput) {
+        adminPinInput.value = '';
+        setTimeout(() => adminPinInput.focus(), 150);
+    }
+});
 
 initApp();

@@ -74,7 +74,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // Rutas de Colecciones y Estado Multi-Tenant (Ramón Múnera vs Modo Prueba 30 Días)
-export type AccessMode = 'ramon_munera' | 'modo_prueba';
+export type AccessMode = 'ramon_munera' | 'modo_prueba' | 'institucion';
 let currentAccessMode: AccessMode = 'ramon_munera';
 
 const getSettingsPath = () => doc(db, 'configuracion_app', currentAccessMode === 'modo_prueba' ? 'institucion_prueba' : 'institucion');
@@ -162,19 +162,19 @@ export const RAMON_MUNERA_PROFILE: InstitutionProfile = {
 
 export const TRIAL_INSTITUTION_DEFAULT: InstitutionProfile = {
     id: "modo_prueba",
-    nombre: "Institución Educativa (Modo Prueba 30 Días)",
+    nombre: "GESTOR ACADÉMICO (MODO PRUEBA 30 DÍAS)",
     logo: null,
-    color1: "#4f46e5",
-    color2: "#06b6d4",
+    color1: "#1d4ed8",
+    color2: "#059669",
     licenciaInicio: "2026-01-01",
     licenciaFin: "2026-12-31",
     tipoPlan: "prueba",
     limiteUsuarios: 9999,
-    titularNombre: "Institución Educativa (Modo Prueba)",
+    titularNombre: "Institución de Prueba Universal",
     popupActivo: true,
     popupTitulo: "¡Bienvenido al Modo Prueba de 30 Días!",
     popupUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    popupDescripcion: "Esta es tu versión de demostración por 30 días para evaluar el Gestor Académico. Puedes personalizar el nombre de tu colegio, logo y Pop-up en Administración. Desarrollada por www.espatodo.com"
+    popupDescripcion: "Plataforma escolar universal en Modo Prueba de 30 Días. Cualquier docente o institución puede evaluar todas las funciones usando el usuario Demo 1234 o personalizar su colegio en Administración. Desarrollada por www.espatodo.com"
 };
 
 // Datos Demo Precargados para Modo Prueba Inmediata (Sin tocar Ramón Múnera)
@@ -255,8 +255,8 @@ export const DEMO_STAFF: Record<string, StaffRecord> = {
 
 // Lista de instituciones registradas
 let institucionesList: InstitutionProfile[] = [
-    { ...RAMON_MUNERA_PROFILE },
-    { ...TRIAL_INSTITUTION_DEFAULT }
+    { ...TRIAL_INSTITUTION_DEFAULT },
+    { ...RAMON_MUNERA_PROFILE }
 ];
 
 let institucionData: InstitutionProfile = { ...institucionesList[0] };
@@ -384,7 +384,8 @@ export const switchAccessMode = async (mode: AccessMode) => {
             institucionData = { ...TRIAL_INSTITUTION_DEFAULT };
         }
     } else {
-        const found = institucionesList.find(i => i.id === 'ramon_munera');
+        const registeredInst = localStorage.getItem('device_registered_institution') || 'ramon_munera';
+        const found = institucionesList.find(i => i.id === registeredInst) || institucionesList.find(i => i.id === 'ramon_munera');
         institucionData = found ? { ...found } : { ...RAMON_MUNERA_PROFILE };
     }
     
@@ -1170,7 +1171,7 @@ export const loadTodayHistory = async (mode: string) => {
         if(mode==='pae') { pathFn=getMealsPath; color='blue'; } 
         else if(mode==='asistencia') { pathFn=getAttendancePath; color='green'; } 
         else if(mode==='evaluacion') { pathFn=getEvaluacionesPath; color='blue'; } 
-        else if(mode==='pruebas') { pathFn=getPruebasPath; color='purple'; } 
+        else if(mode==='pruebas' || (mode==='clase_ef' && efPhase==='pruebas')) { pathFn=getPruebasPath; color='purple'; } 
         else if(mode==='prestamo') { pathFn=getLoansPath; color='yellow'; } 
         else if(mode==='novedad') { pathFn=getNewsPath; color='red'; } 
         else if(mode==='salida') { pathFn=getSalidasPath; color='gray'; } 
@@ -1190,10 +1191,10 @@ export const loadTodayHistory = async (mode: string) => {
             container.innerHTML = '';
             todayRecs.slice(0, 15).forEach(r => {
                 const l1 = r.nombre || r.studentName; 
-                const l2 = mode==='pae'?`PAE`:mode==='asistencia'?'Asistencia':mode==='evaluacion'?`Nota: ${r.nota}`:mode==='pruebas'?'Prueba':mode==='prestamo'?`Llevó: ${r.itemName}`:mode==='salida'?(r.status==='fuera'?'Salió':'Volvió'):mode==='clase_ef'?'Ed. Física':'Novedad';
+                const l2 = mode==='pae'?`PAE`:mode==='asistencia'?'Asistencia':mode==='evaluacion'?`Nota: ${r.nota}`:(mode==='pruebas' || (mode==='clase_ef' && efPhase==='pruebas'))?(r.lapNumber ? `Vta #${r.lapNumber} (${r.lapTime || ''})` : 'Prueba'):mode==='prestamo'?`Llevó: ${r.itemName}`:mode==='salida'?(r.status==='fuera'?'Salió':'Volvió'):mode==='clase_ef'?'Ed. Física':'Novedad';
                 const item = document.createElement('div'); 
                 item.className = `flex justify-between items-center p-3 bg-${color}-50 rounded-lg border border-${color}-100 shadow-sm`;
-                item.innerHTML = `<div class="flex flex-col"><span class="font-bold text-gray-800 text-sm mb-1">${l1}</span><span class="text-11px font-bold text-${color}-600 uppercase">${l2}</span></div><span class="text-xs font-bold text-gray-500 bg-white px-2 py-1 rounded shadow-sm">${(mode === 'pruebas') ? formatTimeWithSeconds(new Date(r.timestamp)) : formatTime(new Date(r.timestamp))}</span>`;
+                item.innerHTML = `<div class="flex flex-col"><span class="font-bold text-gray-800 text-sm mb-1">${l1}</span><span class="text-11px font-bold text-${color}-600 uppercase">${l2}</span></div><span class="text-xs font-bold text-gray-500 bg-white px-2 py-1 rounded shadow-sm">${(mode === 'pruebas' || (mode==='clase_ef' && efPhase==='pruebas')) ? (r.totalTime || formatTimeWithSeconds(new Date(r.timestamp))) : formatTime(new Date(r.timestamp))}</span>`;
                 container.appendChild(item);
             });
         } else {
@@ -1596,87 +1597,499 @@ document.getElementById('btn-save-eval')?.addEventListener('click', async () => 
     }
 });
 
+// ==========================================================
+// SUPER-CRONÓMETRO DE EDUCACIÓN FÍSICA & REGISTRO DE VUELTAS
+// ==========================================================
+let swIsRunning = false;
+let swStartTime = 0;
+let swElapsedTime = 0;
+let swTimerId: any = null;
+
+interface LapRecord {
+    lapNumber: number;
+    studentId: string;
+    nombre: string;
+    grado: string;
+    lapTime: string;
+    lapTimeMs: number;
+    totalTime: string;
+    totalTimeMs: number;
+    timestamp: string;
+}
+let sessionLaps: LapRecord[] = [];
+let studentLapData: Record<string, { count: number; lastLapMs: number }> = {};
+
+const formatMsToString = (ms: number) => {
+    const min = Math.floor(ms / 60000);
+    const sec = Math.floor((ms % 60000) / 1000);
+    const msec = ms % 1000;
+    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(msec).padStart(3, '0')}`;
+};
+
+const getStopwatchElapsed = () => {
+    return swElapsedTime + (swIsRunning ? (Date.now() - swStartTime) : 0);
+};
+
+const updateStopwatchDisplay = () => {
+    const elapsed = getStopwatchElapsed();
+    const min = Math.floor(elapsed / 60000);
+    const sec = Math.floor((elapsed % 60000) / 1000);
+    const msec = elapsed % 1000;
+
+    const elMin = document.getElementById('sw-min');
+    const elSec = document.getElementById('sw-sec');
+    const elMs = document.getElementById('sw-ms');
+
+    if (elMin) elMin.innerText = String(min).padStart(2, '0');
+    if (elSec) elSec.innerText = String(sec).padStart(2, '0');
+    if (elMs) elMs.innerText = String(msec).padStart(3, '0');
+};
+
+const startStopwatch = () => {
+    if (swIsRunning) return;
+    swIsRunning = true;
+    swStartTime = Date.now() - swElapsedTime;
+    if (swTimerId) clearInterval(swTimerId);
+    swTimerId = setInterval(updateStopwatchDisplay, 30);
+
+    const badge = document.getElementById('sw-status-badge');
+    if (badge) {
+        badge.className = "text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white border border-emerald-400 animate-pulse";
+        badge.innerText = "CORRIENDO";
+    }
+    const icon = document.getElementById('icon-sw-toggle');
+    if (icon) icon.className = "fas fa-pause";
+    const label = document.getElementById('label-sw-toggle');
+    if (label) label.innerText = "PAUSAR";
+};
+
+const pauseStopwatch = () => {
+    if (!swIsRunning) return;
+    swIsRunning = false;
+    swElapsedTime = Date.now() - swStartTime;
+    if (swTimerId) {
+        clearInterval(swTimerId);
+        swTimerId = null;
+    }
+    updateStopwatchDisplay();
+
+    const badge = document.getElementById('sw-status-badge');
+    if (badge) {
+        badge.className = "text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-600 text-white border border-amber-400";
+        badge.innerText = "PAUSADO";
+    }
+    const icon = document.getElementById('icon-sw-toggle');
+    if (icon) icon.className = "fas fa-play";
+    const label = document.getElementById('label-sw-toggle');
+    if (label) label.innerText = "REANUDAR";
+};
+
+const resetStopwatch = () => {
+    swIsRunning = false;
+    swElapsedTime = 0;
+    swStartTime = 0;
+    if (swTimerId) {
+        clearInterval(swTimerId);
+        swTimerId = null;
+    }
+    updateStopwatchDisplay();
+
+    const badge = document.getElementById('sw-status-badge');
+    if (badge) {
+        badge.className = "text-[10px] font-black px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 border border-gray-600";
+        badge.innerText = "PAUSADO";
+    }
+    const icon = document.getElementById('icon-sw-toggle');
+    if (icon) icon.className = "fas fa-play";
+    const label = document.getElementById('label-sw-toggle');
+    if (label) label.innerText = "INICIAR CRONÓMETRO";
+};
+
+const toggleStopwatch = () => {
+    if (swIsRunning) {
+        pauseStopwatch();
+    } else {
+        startStopwatch();
+    }
+};
+
+let lapToastTimeout: any = null;
+const showLapHUDToast = (lapNumber: number, studentName: string, lapTime: string, totalTime: string) => {
+    const banner = document.getElementById('sw-lap-toast');
+    const title = document.getElementById('sw-lap-toast-title');
+    const name = document.getElementById('sw-lap-toast-name');
+    const time = document.getElementById('sw-lap-toast-time');
+
+    if (title) title.innerText = `🏃 ¡VUELTA #${lapNumber} REGISTRADA!`;
+    if (name) name.innerText = studentName;
+    if (time) time.innerText = `Vuelta: ${lapTime} | Total: ${totalTime}`;
+
+    if (banner) {
+        banner.classList.remove('hidden');
+        if (lapToastTimeout) clearTimeout(lapToastTimeout);
+        lapToastTimeout = setTimeout(() => {
+            banner.classList.add('hidden');
+        }, 3500);
+    }
+};
+
+const renderLapsTable = () => {
+    const tbody = document.getElementById('pruebas-laps-table-body');
+    const summary = document.getElementById('pruebas-laps-summary');
+    if (summary) summary.innerText = `${sessionLaps.length} vueltas registradas en esta prueba`;
+    if (!tbody) return;
+
+    if (sessionLaps.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-gray-400 italic">Inicia el cronómetro y escanea a los estudiantes al pasar por la meta.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = sessionLaps.map((lap, idx) => `
+        <tr class="hover:bg-purple-50 transition-colors">
+            <td class="p-1.5 text-center font-bold text-gray-500">${sessionLaps.length - idx}</td>
+            <td class="p-1.5 font-bold text-gray-800">${lap.nombre} <span class="text-[10px] text-gray-500 block font-normal">${lap.grado}</span></td>
+            <td class="p-1.5 text-center font-black text-purple-700"><span class="bg-purple-100 px-1.5 py-0.5 rounded">Vta ${lap.lapNumber}</span></td>
+            <td class="p-1.5 text-right font-mono font-bold text-emerald-600">${lap.lapTime}</td>
+            <td class="p-1.5 text-right font-mono font-bold text-gray-700">${lap.totalTime}</td>
+        </tr>
+    `).join('');
+};
+
+const exportLapsToExcel = () => {
+    if (sessionLaps.length === 0) {
+        return showToast('No hay vueltas registradas en esta prueba todavía.', 'warning');
+    }
+    try {
+        const rows = sessionLaps.map((lap, idx) => ({
+            'N°': sessionLaps.length - idx,
+            'Estudiante': lap.nombre,
+            'Documento': lap.studentId,
+            'Grado': lap.grado,
+            'Vuelta': `Vuelta #${lap.lapNumber}`,
+            'Tiempo Vuelta': lap.lapTime,
+            'Tiempo Total': lap.totalTime,
+            'Hora': formatTime(new Date(lap.timestamp))
+        }));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, "Vueltas_Prueba_Fisica");
+        XLSX.writeFile(wb, `Pruebas_Fisicas_Vueltas_${getTodayString()}.xlsx`);
+        showToast('Planilla de vueltas exportada exitosamente.', 'success');
+    } catch(e) {
+        showToast('Error al exportar planilla de vueltas.', 'error');
+    }
+};
+
 const handlePruebas = async (studentId: string) => {
-    const student = studentsDict[studentId]; 
+    let student = studentsDict[studentId]; 
+    if (!student) {
+        student = Object.values(studentsDict).find(s => 
+            String(s.matricula).trim() === studentId || 
+            String(s.documento).trim() === studentId
+        )!;
+    }
     if (!student) { playBeep('error'); return showToast(`Estudiante no encontrado.`, 'error'); }
     
     const now = Date.now(); 
     if (pruebasCooldown[student.id] && (now - pruebasCooldown[student.id] < 3000)) { 
         playBeep('error'); 
-        return showToast(`Espera 3 segundos.`, 'warning', 2000); 
+        return showToast(`<b>⏳ ESPERA 3 SEG</b><br>${getFullName(student)} ya registró su paso.`, 'warning', 1800); 
     }
     pruebasCooldown[student.id] = now;
+
+    // Si el cronómetro no está corriendo ni tiene tiempo, iniciarlo automáticamente
+    if (!swIsRunning && swElapsedTime === 0) {
+        startStopwatch();
+    }
+
+    const currentTotalMs = getStopwatchElapsed();
+    if (!studentLapData[student.id]) {
+        studentLapData[student.id] = { count: 0, lastLapMs: 0 };
+    }
+    const lapNumber = studentLapData[student.id].count + 1;
+    const lapTimeMs = studentLapData[student.id].count === 0 
+        ? currentTotalMs 
+        : Math.max(0, currentTotalMs - studentLapData[student.id].lastLapMs);
     
-    await setDoc(doc(getPruebasPath(), `${now}_${student.id}`), { 
+    studentLapData[student.id] = { count: lapNumber, lastLapMs: currentTotalMs };
+
+    const formattedLap = formatMsToString(lapTimeMs);
+    const formattedTotal = formatMsToString(currentTotalMs);
+
+    await setDoc(doc(getPruebasPath(), `${now}_${student.id}_vta${lapNumber}`), { 
         studentId: student.id, 
         nombre: getFullName(student), 
         grado: student.grado || 'Sin Grupo', 
+        lapNumber: lapNumber,
+        lapTime: formattedLap,
+        lapTimeMs: lapTimeMs,
+        totalTime: formattedTotal,
+        totalTimeMs: currentTotalMs,
         date: getTodayString(), 
         timestamp: new Date().toISOString(), 
         recordedById: currentStaff.id, 
-        recordedByName: currentStaff.nombre 
+        recordedByName: currentStaff.nombre,
+        tipo: 'vuelta_prueba_ef'
     });
+
+    sessionLaps.unshift({
+        lapNumber,
+        studentId: student.id,
+        nombre: getFullName(student),
+        grado: student.grado || 'Sin Grupo',
+        lapTime: formattedLap,
+        lapTimeMs,
+        totalTime: formattedTotal,
+        totalTimeMs: currentTotalMs,
+        timestamp: new Date().toISOString()
+    });
+
     playBeep('success'); 
-    showToast(`<b>⏱️ TIEMPO REGISTRADO</b><br>${getFullName(student)}`, 'success', 1000); 
-    addRecentScanToUI(getFullName(student), 'Prueba Física', new Date(), 'purple');
+    showLapHUDToast(lapNumber, getFullName(student), formattedLap, formattedTotal);
+    renderLapsTable();
+    showToast(`<b>⏱️ VUELTA #${lapNumber}: ${getFullName(student)}</b><br><span class="font-mono font-bold text-emerald-300">Vuelta: ${formattedLap}</span> | Total: ${formattedTotal}`, 'success', 2200); 
+    addRecentScanToUI(getFullName(student), `Vta #${lapNumber} (${formattedLap})`, new Date(), 'purple');
+};
+
+// ==========================================================
+// CONTROL INTELIGENTE DE SALIDAS Y RETORNOS A LA INSTITUCIÓN
+// ==========================================================
+const updateActiveOutsideCount = async () => {
+    try {
+        const snap = await getDocs(getSalidasPath());
+        let outsideCount = 0;
+        snap.forEach(d => {
+            const data: any = d.data();
+            if (data.date === getTodayString() && (data.status === 'fuera' || data.status === 'salio' || data.status === 'salio_ef')) {
+                outsideCount++;
+            }
+        });
+        const summaryEl = document.getElementById('salidas-active-outside-summary');
+        if (summaryEl) summaryEl.innerText = `Estudiantes fuera actualmente: ${outsideCount}`;
+        const modalCountEl = document.getElementById('modal-outside-count');
+        if (modalCountEl) modalCountEl.innerText = `${outsideCount} estudiantes fuera`;
+    } catch(e) {
+        console.error(e);
+    }
+};
+
+const renderOutsideStudentsModal = async () => {
+    const container = document.getElementById('outside-students-list-container');
+    if (!container) return;
+    container.innerHTML = '<div class="text-gray-400 text-center py-6 text-sm italic"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando estudiantes fuera...</div>';
+    
+    try {
+        const snap = await getDocs(getSalidasPath());
+        const outsideList: any[] = [];
+        const nowMs = Date.now();
+        snap.forEach(d => {
+            const data: any = d.data();
+            if (data.date === getTodayString() && (data.status === 'fuera' || data.status === 'salio' || data.status === 'salio_ef')) {
+                const timeOutMs = data.timeOut ? new Date(data.timeOut).getTime() : (data.timestamp ? new Date(data.timestamp).getTime() : 0);
+                const duracionMin = Math.max(1, Math.round((nowMs - timeOutMs) / 60000));
+                outsideList.push({ ...data, duracionMin, timeOutMs });
+            }
+        });
+
+        const modalCountEl = document.getElementById('modal-outside-count');
+        if (modalCountEl) modalCountEl.innerText = `${outsideList.length} estudiantes fuera`;
+        const summaryEl = document.getElementById('salidas-active-outside-summary');
+        if (summaryEl) summaryEl.innerText = `Estudiantes fuera actualmente: ${outsideList.length}`;
+
+        if (outsideList.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fas fa-check-circle text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-sm font-bold text-gray-700">No hay estudiantes fuera actualmente</p>
+                    <p class="text-xs text-gray-400 mt-1">Todos los alumnos que salieron hoy ya registraron su retorno o no se han marcado salidas.</p>
+                </div>
+            `;
+            return;
+        }
+
+        outsideList.sort((a, b) => b.timeOutMs - a.timeOutMs);
+        container.innerHTML = '';
+        outsideList.forEach(item => {
+            const div = document.createElement('div');
+            div.className = "py-2.5 flex items-center justify-between gap-2";
+            div.innerHTML = `
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-sm text-gray-800 truncate">${item.nombre}</div>
+                    <div class="text-xs text-gray-500 font-medium">Grado: ${item.grado || 'Sin Grupo'} &bull; Salió: <span class="font-bold text-amber-700">${item.horaSalida || formatTime(new Date(item.timeOutMs))}</span></div>
+                    <div class="text-[11px] text-amber-600 font-bold mt-0.5"><i class="fas fa-clock mr-1"></i>Lleva fuera: ${item.duracionMin} min</div>
+                </div>
+                <button type="button" data-return-id="${item.studentId}" class="btn-mark-manual-return bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1 transition-transform">
+                    <i class="fas fa-sign-in-alt"></i> Marcar Retorno
+                </button>
+            `;
+            container.appendChild(div);
+        });
+
+        container.querySelectorAll('.btn-mark-manual-return').forEach(btn => {
+            btn.addEventListener('click', async (e: any) => {
+                const sId = e.currentTarget.dataset.returnId;
+                if (sId) {
+                    await handleSalida(sId);
+                    await renderOutsideStudentsModal();
+                }
+            });
+        });
+    } catch(e) {
+        container.innerHTML = '<div class="text-red-500 text-center py-4 text-xs font-bold">Error cargando listado.</div>';
+    }
 };
 
 const handleSalida = async (studentId: string) => {
-    const student = studentsDict[studentId]; 
+    let student = studentsDict[studentId]; 
+    if (!student) {
+        student = Object.values(studentsDict).find(s => 
+            String(s.matricula).trim() === studentId || 
+            String(s.documento).trim() === studentId
+        )!;
+    }
     if (!student) { playBeep('error'); return showToast(`Estudiante no encontrado.`, 'error'); }
     
     const ref = doc(getSalidasPath(), `${getTodayString()}_${student.id}`); 
     const snap = await getDoc(ref); 
     const data = snap.exists() ? snap.data() : null;
-    const role = (currentStaff.rol || '').toLowerCase().trim();
 
-    if (role.includes('vigilan') || role.includes('porter')) {
-        if (data && data.status === 'autorizado') { 
-            await updateDoc(ref, { status: 'salio', timeOut: new Date().toISOString() }); 
-            playBeep('success'); 
-            showToast(`<strong class="text-3xl block mt-2 text-white">✅ PUEDE SALIR</strong><span class="text-lg font-bold mt-2 block">${getFullName(student)}</span>`, 'success', 4000); 
-            addRecentScanToUI(getFullName(student), 'Salió', new Date(), 'gray'); 
-        } else { 
-            playBeep('error'); 
-            showToast(`<strong class="text-3xl block mt-2 text-white">❌ ACCESO DENEGADO</strong><span class="text-lg font-bold mt-2 block">${getFullName(student)}</span><span class="text-sm">No tiene autorización en el sistema.</span>`, 'error', 5000); 
+    const nowIso = new Date().toISOString();
+    const nowTimeStr = formatTimeWithSeconds(new Date());
+    const nowMs = Date.now();
+
+    // 1. Si el estudiante actualmente está FUERA de la institución:
+    if (data && (data.status === 'fuera' || data.status === 'salio' || data.status === 'salio_ef')) {
+        const timeOutMs = data.timeOut ? new Date(data.timeOut).getTime() : (data.timestamp ? new Date(data.timestamp).getTime() : 0);
+        const elapsedSec = Math.floor((nowMs - timeOutMs) / 1000);
+
+        // Protección anti-doble escaneo accidental (menos de 10 segundos):
+        if (elapsedSec < 10) {
+            playBeep('error');
+            showToast(`
+                <div class="text-center p-1">
+                    <div class="text-2xl font-black text-amber-300">⚠️ YA TIENE SALIDA REGISTRADA</div>
+                    <div class="text-base font-bold text-white mt-1">${getFullName(student)}</div>
+                    <div class="text-xs text-yellow-200 mt-1">Salió hace solo ${elapsedSec} segundos (Hora: ${data.horaSalida || formatTimeWithSeconds(new Date(timeOutMs))}).</div>
+                    <div class="text-xs text-amber-100 font-semibold mt-2 bg-amber-900/60 py-1 px-2 rounded">Estado actual: 🔴 FUERA DEL PLANTEL</div>
+                    <div class="text-[11px] text-gray-300 mt-1">Para registrar el retorno, espere al momento del reingreso del alumno.</div>
+                </div>
+            `, 'warning', 4500);
+            return;
         }
-    } else if (role.includes('admin') || role.includes('coord') || role.includes('rector')) {
+
+        // Si ya pasaron más de 10 segundos, este escaneo es un legítimo RETORNO a la institución:
+        const duracionMin = Math.max(1, Math.round(elapsedSec / 60));
+        await updateDoc(ref, {
+            status: 'regreso',
+            timeIn: nowIso,
+            horaRetorno: nowTimeStr,
+            duracionFueraMin: duracionMin,
+            recordedByIdRetorno: currentStaff.id,
+            recordedByNameRetorno: currentStaff.nombre
+        });
+
+        playBeep('success');
+        showToast(`
+            <div class="text-center p-1">
+                <div class="text-2xl font-black text-emerald-300">🏫 RETORNO REGISTRADO</div>
+                <div class="text-lg font-bold text-white mt-1">${getFullName(student)}</div>
+                <div class="text-xs text-emerald-100">Grado: ${student.grado || 'Sin Grupo'}</div>
+                <div class="text-sm font-black text-green-300 bg-emerald-900/60 py-1.5 px-3 rounded-lg mt-2 inline-block">
+                    Hora Retorno: ${nowTimeStr}
+                </div>
+                <div class="text-xs text-emerald-200 mt-1 font-semibold">Tiempo que estuvo fuera: <b>${duracionMin} minutos</b></div>
+                <div class="text-xs text-emerald-100 mt-1">Estado: 🟢 DENTRO DE LA INSTITUCIÓN</div>
+            </div>
+        `, 'success', 4000);
+        addRecentScanToUI(getFullName(student), `Volvió (${duracionMin}m fuera)`, new Date(), 'green');
+        updateActiveOutsideCount();
+        return;
+    }
+
+    // 2. Si el estudiante ya había retornado hoy:
+    if (data && (data.status === 'regreso' || data.status === 'regreso_ef')) {
+        const timeInMs = data.timeIn ? new Date(data.timeIn).getTime() : 0;
+        const elapsedSecSinceIn = Math.floor((nowMs - timeInMs) / 1000);
+
+        // Si fue escaneado hace menos de 10 segundos del retorno:
+        if (elapsedSecSinceIn < 10) {
+            playBeep('error');
+            showToast(`
+                <div class="text-center p-1">
+                    <div class="text-2xl font-black text-green-300">✅ YA SE ENCUENTRA DENTRO</div>
+                    <div class="text-base font-bold text-white mt-1">${getFullName(student)}</div>
+                    <div class="text-xs text-emerald-200 mt-1">Retornó a las ${data.horaRetorno || nowTimeStr}.</div>
+                    <div class="text-xs text-green-100 font-semibold mt-1">Estado: 🟢 DENTRO DE LA INSTITUCIÓN</div>
+                </div>
+            `, 'info', 3500);
+            return;
+        }
+
+        // Si ya pasaron más de 10 segundos y vuelve a salir (segunda salida del día):
         await setDoc(ref, { 
             studentId: student.id, 
             nombre: getFullName(student), 
             grado: student.grado || 'Sin Grupo', 
-            status: 'autorizado', 
+            status: 'fuera', 
             date: getTodayString(), 
-            timestamp: new Date().toISOString(), 
+            timestamp: nowIso, 
+            timeOut: nowIso, 
+            horaSalida: nowTimeStr, 
             recordedById: currentStaff.id, 
-            recordedByName: currentStaff.nombre 
-        }); 
-        playBeep('success'); 
-        showToast(`<b>AUTORIZADO:</b><br>${getFullName(student)}`, 'success', 2500); 
-        addRecentScanToUI(getFullName(student), 'Permiso Salida', new Date(), 'gray');
-    } else {
-        if (data && data.status === 'fuera') { 
-            await updateDoc(ref, { status: 'regreso', timeIn: new Date().toISOString() }); 
-            playBeep('success'); 
-            showToast(`<b>REGRESÓ:</b> ${getFullName(student)}`, 'success', 1500); 
-            addRecentScanToUI(getFullName(student), 'Volvió', new Date(), 'gray'); 
-        } else { 
-            await setDoc(ref, { 
-                studentId: student.id, 
-                nombre: getFullName(student), 
-                grado: student.grado || 'Sin Grupo', 
-                status: 'fuera', 
-                date: getTodayString(), 
-                timestamp: new Date().toISOString(), 
-                timeOut: new Date().toISOString(), 
-                recordedById: currentStaff.id, 
-                recordedByName: currentStaff.nombre 
-            }); 
-            playBeep('success'); 
-            showToast(`<b>SALIÓ:</b> ${getFullName(student)}`, 'warning', 1500); 
-            addRecentScanToUI(getFullName(student), 'Salió', new Date(), 'gray'); 
-        }
+            recordedByName: currentStaff.nombre,
+            salidaAnterior: {
+                horaSalida: data.horaSalida,
+                horaRetorno: data.horaRetorno,
+                duracionFueraMin: data.duracionFueraMin || 0
+            }
+        });
+
+        playBeep('success');
+        showToast(`
+            <div class="text-center p-1">
+                <div class="text-2xl font-black text-amber-300">🚪 NUEVA SALIDA REGISTRADA</div>
+                <div class="text-lg font-bold text-white mt-1">${getFullName(student)}</div>
+                <div class="text-xs text-gray-200">Grado: ${student.grado || 'Sin Grupo'}</div>
+                <div class="text-sm font-black text-yellow-300 bg-amber-900/60 py-1.5 px-3 rounded-lg mt-2 inline-block">
+                    Hora Salida: ${nowTimeStr}
+                </div>
+                <div class="text-xs text-amber-200 mt-1 font-semibold">Estado: 🔴 FUERA DE LA INSTITUCIÓN</div>
+            </div>
+        `, 'warning', 4000);
+        addRecentScanToUI(getFullName(student), 'Salió de la IE', new Date(), 'gray');
+        updateActiveOutsideCount();
+        return;
     }
+
+    // 3. Primera salida del día:
+    await setDoc(ref, { 
+        studentId: student.id, 
+        nombre: getFullName(student), 
+        grado: student.grado || 'Sin Grupo', 
+        status: 'fuera', 
+        date: getTodayString(), 
+        timestamp: nowIso, 
+        timeOut: nowIso, 
+        horaSalida: nowTimeStr, 
+        recordedById: currentStaff.id, 
+        recordedByName: currentStaff.nombre 
+    }); 
+
+    playBeep('success'); 
+    showToast(`
+        <div class="text-center p-1">
+            <div class="text-2xl font-black text-amber-300">🚪 SALIDA REGISTRADA</div>
+            <div class="text-lg font-bold text-white mt-1">${getFullName(student)}</div>
+            <div class="text-xs text-gray-200">Grado: ${student.grado || 'Sin Grupo'}</div>
+            <div class="text-sm font-black text-yellow-300 bg-amber-900/60 py-1.5 px-3 rounded-lg mt-2 inline-block">
+                Hora Salida: ${nowTimeStr}
+            </div>
+            <div class="text-xs text-amber-200 mt-1 font-semibold">Estado: 🔴 FUERA DE LA INSTITUCIÓN</div>
+            <div class="text-[11px] text-gray-300 mt-1">Al regresar, vuelva a escanear su carnet para registrar su retorno.</div>
+        </div>
+    `, 'warning', 4000); 
+    addRecentScanToUI(getFullName(student), 'Salió de la IE', new Date(), 'gray'); 
+    updateActiveOutsideCount();
 };
 
 const handleLoan = async (scannedText: string) => {
@@ -1883,6 +2296,8 @@ const handleClaseEF = async (scannedText: string) => {
         playBeep('success'); 
         showToast(`<b>Elemento Devuelto: ${itemName}</b>`, 'success', 1500); 
         addRecentScanToUI('Sala de Deportes', `EF - Devolvió: ${itemName}`, new Date(), 'indigo');
+    } else if (efPhase === 'pruebas') {
+        await handlePruebas(scannedText);
     }
 };
 
@@ -2217,7 +2632,7 @@ document.getElementById('btn-sp-search')?.addEventListener('click', () => {
     }
     
     if(!userObj) { 
-        userObj = staffDict[query]; 
+        userObj = staffDict[query] || DEMO_STAFF[query]; 
         if(userObj) isStaff = true; 
     }
     
@@ -3137,19 +3552,30 @@ export const populateAdminInstitutionForm = (inst: InstitutionProfile) => {
 
 const aplicarConfiguracionUI = () => {
     const hName = document.getElementById('header-inst-name');
-    if (hName && institucionData.nombre) hName.innerText = institucionData.nombre;
-    
     const hLogo = document.getElementById('header-logo') as HTMLImageElement;
     const hLogoBox = document.getElementById('header-logo-container');
     const hDefaultIcon = document.getElementById('header-default-icon');
-    
-    if (institucionData.logo) { 
-        if (hLogo) hLogo.src = institucionData.logo; 
-        hLogoBox?.classList.remove('hidden'); 
-        hDefaultIcon?.classList.add('hidden'); 
-    } else {
+    const loginBadge = document.getElementById('login-institution-badge');
+    const headerPlanText = document.getElementById('header-plan-text');
+
+    if (currentAccessMode === 'modo_prueba') {
+        if (hName) hName.innerText = "GESTOR ACADÉMICO";
         hLogoBox?.classList.add('hidden');
         hDefaultIcon?.classList.remove('hidden');
+        if (loginBadge) loginBadge.innerText = "Modo Prueba (30 Días)";
+        if (headerPlanText) headerPlanText.innerText = "Prueba 30 Días";
+    } else {
+        if (hName && institucionData.nombre) hName.innerText = institucionData.nombre;
+        if (institucionData.logo) { 
+            if (hLogo) hLogo.src = institucionData.logo; 
+            hLogoBox?.classList.remove('hidden'); 
+            hDefaultIcon?.classList.add('hidden'); 
+        } else {
+            hLogoBox?.classList.add('hidden');
+            hDefaultIcon?.classList.remove('hidden');
+        }
+        if (loginBadge) loginBadge.innerText = institucionData.nombre;
+        if (headerPlanText) headerPlanText.innerText = "Plan Institucional";
     }
 
     const mHead = document.getElementById('main-header');
@@ -3657,9 +4083,35 @@ export const saveSuperAdminConfig = async () => {
 };
 
 // Eventos de Super-Administrador
-document.getElementById('btn-header-superadmin')?.addEventListener('click', () => {
-    if (isSuperAdminAuthenticated) openSuperAdminModal();
-    else openSuperAdminLogin();
+let crownClickCount = 0;
+let crownClickTimeout: any = null;
+
+export const triggerSecretSuperAdminAccess = () => {
+    crownClickCount++;
+    if (crownClickCount === 1) {
+        crownClickTimeout = setTimeout(() => {
+            crownClickCount = 0;
+        }, 1500); // Ventana de 1.5 segundos para 3 clics
+    } else if (crownClickCount >= 3) {
+        clearTimeout(crownClickTimeout);
+        crownClickCount = 0;
+        playBeep('success');
+        if (isSuperAdminAuthenticated) {
+            openSuperAdminModal();
+            showToast('Panel Super-Administrador Activo', 'success', 2500);
+        } else {
+            openSuperAdminLogin();
+            showToast('Acceso Confidencial: Ingrese PIN Super-Admin', 'info', 3000);
+        }
+    }
+};
+
+document.querySelectorAll('.secret-crown-superadmin').forEach(el => {
+    el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerSecretSuperAdminAccess();
+    });
 });
 
 document.getElementById('header-plan-badge')?.addEventListener('click', () => {
@@ -3890,6 +4342,35 @@ const updateModeUI = () => {
         efBar?.classList.remove('flex'); 
     }
 
+    // Activación del Super-Cronómetro y Dashboard de Vueltas de Ed. Física
+    const isPruebasActive = (appMode === 'clase_ef' && efPhase === 'pruebas') || appMode === 'pruebas';
+    const swOverlay = document.getElementById('super-stopwatch-overlay');
+    const lapsDashboard = document.getElementById('pruebas-laps-dashboard');
+    if (isPruebasActive) {
+        swOverlay?.classList.remove('hidden');
+        swOverlay?.classList.add('flex');
+        lapsDashboard?.classList.remove('hidden');
+        lapsDashboard?.classList.add('flex');
+        renderLapsTable();
+    } else {
+        swOverlay?.classList.add('hidden');
+        swOverlay?.classList.remove('flex');
+        lapsDashboard?.classList.add('hidden');
+        lapsDashboard?.classList.remove('flex');
+    }
+
+    // Activación del Panel de Control de Salidas y Retornos
+    const isSalidaActive = appMode === 'salida' || (appMode === 'clase_ef' && (efPhase === 'salida' || efPhase === 'regreso'));
+    const salidasPanel = document.getElementById('salidas-control-panel');
+    if (isSalidaActive) {
+        salidasPanel?.classList.remove('hidden');
+        salidasPanel?.classList.add('flex');
+        updateActiveOutsideCount();
+    } else {
+        salidasPanel?.classList.add('hidden');
+        salidasPanel?.classList.remove('flex');
+    }
+
     const masterBar = document.getElementById('eval-master-subtoolbar');
     if (appMode === 'evaluacion' || (appMode === 'clase_ef' && efPhase === 'evaluacion')) {
         masterBar?.classList.remove('hidden'); 
@@ -3966,6 +4447,15 @@ const updateModeUI = () => {
         }
     }
 
+    const loginBadge = document.getElementById('login-institution-badge');
+    if (loginBadge) {
+        if (currentAccessMode === 'modo_prueba') {
+            loginBadge.innerText = 'Modo Prueba (30 Días)';
+        } else {
+            loginBadge.innerText = institucionData.nombre;
+        }
+    }
+
     loanTempStudent = null; 
     document.getElementById('loan-status-bar')?.classList.add('hidden');
     document.getElementById('btn-view-active-loans')?.classList.toggle('hidden', appMode !== 'prestamo');
@@ -3984,7 +4474,8 @@ const efPhaseNames: Record<string, string> = {
     'salida': '4. Salida por Portería', 
     'novedad': '5. Registro de Novedades', 
     'regreso': '6. Regreso a la Institución', 
-    'devolucion': '7. Entrega de Elementos' 
+    'devolucion': '7. Entrega de Elementos',
+    'pruebas': '8. Pruebas Físicas (Super-Cronómetro / Vueltas)'
 };
 
 document.querySelectorAll('.ef-phase-btn').forEach(btn => {
@@ -3992,16 +4483,24 @@ document.querySelectorAll('.ef-phase-btn').forEach(btn => {
         const phase = e.currentTarget.dataset.efPhase; 
         efPhase = phase;
         const pLabel = document.getElementById('ef-phase-label');
-        if (pLabel) pLabel.innerText = `Fase: ${efPhaseNames[phase]}`;
+        if (pLabel) pLabel.innerText = `Fase: ${efPhaseNames[phase] || phase}`;
         
         document.querySelectorAll('.ef-phase-btn').forEach((b: any) => {
             if (b.dataset.efPhase === phase) { 
-                b.className = "ef-phase-btn bg-indigo-600 text-white py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"; 
+                if (phase === 'pruebas') {
+                    b.className = "ef-phase-btn bg-purple-600 text-white py-2 px-1 rounded text-xs font-black shadow-sm flex flex-col items-center";
+                } else {
+                    b.className = "ef-phase-btn bg-indigo-600 text-white py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"; 
+                }
             } else { 
-                b.className = "ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"; 
+                if (b.dataset.efPhase === 'pruebas') {
+                    b.className = "ef-phase-btn bg-white text-purple-700 border border-purple-300 py-2 px-1 rounded text-xs font-black shadow-sm flex flex-col items-center hover:bg-purple-100 transition-colors";
+                } else {
+                    b.className = "ef-phase-btn bg-white text-indigo-700 border border-indigo-300 py-2 px-1 rounded text-xs font-bold shadow-sm flex flex-col items-center"; 
+                }
             }
         });
-        showToast(`Modo Ed. Física: ${efPhaseNames[phase]}`, 'info', 1500);
+        showToast(`Modo Ed. Física: ${efPhaseNames[phase] || phase}`, 'info', 1500);
         updateModeUI();
     });
 });
@@ -4028,7 +4527,33 @@ document.getElementById('btn-staff-login')?.addEventListener('click', async () =
     const pin = sPin?.value.trim();
     if (!id) return showToast('Ingrese documento', 'warning');
     
-    const staff = staffDict[id];
+    // CASO UNIVERSAL DEMO: Docente Demo 1234 (Garantizado sin importar el modo)
+    if (id === '1234' && (pin === '1234' || pin === 'profe123')) {
+        if (currentAccessMode !== 'modo_prueba') {
+            await switchAccessMode('modo_prueba');
+        }
+        currentStaff = DEMO_STAFF['1234'] || {
+            id: '1234',
+            documento: '1234',
+            nombre: 'Profesor de Demostración',
+            cargo: 'docente',
+            rol: 'docente',
+            clave: '1234',
+            isStaff: true
+        };
+        const sDisp = document.getElementById('current-staff-display');
+        if (sDisp) sDisp.innerHTML = `<i class="fas fa-user-check mr-1"></i> ${currentStaff.nombre}`;
+        applyRolesUI(currentStaff); 
+        switchTab('scanner'); 
+        showToast('¡Bienvenido al Modo Prueba de 30 Días!', 'success', 4000);
+        return;
+    }
+
+    let staff = staffDict[id];
+    if (!staff && DEMO_STAFF[id]) {
+        staff = DEMO_STAFF[id];
+    }
+
     if (staff && pin === (staff.clave || staff.id)) {
         // Restricción para Plan Docente Individual (1 solo usuario autorizado)
         if (institucionData.tipoPlan === 'docente') {
@@ -4337,33 +4862,67 @@ document.getElementById('btn-qr-ind-print')?.addEventListener('click', () => {
 });
 
 // Inicialización de la Aplicación
-const initApp = async () => {
-    const dDisplay = document.getElementById('date-display');
-    if (dDisplay) {
-        dDisplay.innerText = new Date().toLocaleDateString('es-CO', { weekday: 'short', month: 'short', day: 'numeric' });
+// ==========================================================
+// ONBOARDING INTELIGENTE Y VINCULACIÓN DE INSTITUCIÓN
+// ==========================================================
+export const openOnboardingModal = () => {
+    const modal = document.getElementById('modal-device-onboarding');
+    const select = document.getElementById('select-onboarding-institution') as HTMLSelectElement;
+    if (select) {
+        select.innerHTML = '';
+        const realInsts = institucionesList.filter(i => i.id !== 'modo_prueba');
+        if (realInsts.length > 0) {
+            realInsts.forEach(inst => {
+                const opt = document.createElement('option');
+                opt.value = inst.id;
+                opt.innerText = `${inst.nombre} (${inst.tipoPlan === 'institucional' ? 'Plan Institucional' : 'Licencia Activa'})`;
+                select.appendChild(opt);
+            });
+        } else {
+            const opt = document.createElement('option');
+            opt.value = 'ramon_munera';
+            opt.innerText = 'I.E. Ramón Múnera Lopera (Medellín - Licencia Activa)';
+            select.appendChild(opt);
+        }
     }
+    modal?.classList.remove('hidden');
+};
+
+export const closeOnboardingModal = () => {
+    document.getElementById('modal-device-onboarding')?.classList.add('hidden');
+};
+
+const initApp = async () => {
+    // Reloj y Fecha en Vivo (Actualización cada segundo en el encabezado)
+    const updateHeaderClock = () => {
+        const dDisplay = document.getElementById('date-display');
+        const tDisplay = document.getElementById('time-display');
+        const now = new Date();
+        if (dDisplay) {
+            dDisplay.innerText = now.toLocaleDateString('es-CO', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+        if (tDisplay) {
+            tDisplay.innerText = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        }
+    };
+    updateHeaderClock();
+    setInterval(updateHeaderClock, 1000);
     
-    // 1. Detectar Parámetros de Acceso en la URL o Preferencia Guardada
+    // 1. Detección Inteligente de Dispositivo / Parámetros de Acceso
     const urlParams = new URLSearchParams(window.location.search);
     const instParam = (urlParams.get('inst') || urlParams.get('colegio') || urlParams.get('modo') || '').toLowerCase().trim();
+    const registeredDeviceInst = localStorage.getItem('device_registered_institution');
 
     if (instParam === 'rm' || instParam === 'ramon_munera' || instParam === 'oficial') {
         currentAccessMode = 'ramon_munera';
     } else if (instParam === 'prueba' || instParam === 'demo' || instParam === 'trial' || instParam === 'test') {
         currentAccessMode = 'modo_prueba';
+    } else if (registeredDeviceInst) {
+        // Dispositivo ya reconocido y vinculado a una institución con licencia
+        currentAccessMode = registeredDeviceInst === 'ramon_munera' ? 'ramon_munera' : 'institucion';
     } else {
-        const savedMode = localStorage.getItem('active_access_mode');
-        if (savedMode === 'modo_prueba' || savedMode === 'ramon_munera') {
-            currentAccessMode = savedMode as any;
-        } else {
-            // Si el visitante proviene de www.espatodo.com o enlace general abierto sin parámetro específico
-            const referrer = document.referrer ? document.referrer.toLowerCase() : '';
-            if (referrer.includes('espatodo.com')) {
-                currentAccessMode = 'modo_prueba';
-            } else {
-                currentAccessMode = 'ramon_munera';
-            }
-        }
+        // Dispositivo no vinculado (Primera vez o usuario en Modo Prueba)
+        currentAccessMode = 'modo_prueba';
     }
 
     localStorage.setItem('active_access_mode', currentAccessMode);
@@ -4378,29 +4937,62 @@ const initApp = async () => {
     aplicarConfiguracionUI();
     checkLicenseValidity();
 
-    // Mostrar el Pop-up Vertical al iniciar si está habilitado
-    setTimeout(() => {
-        showStartupPopup(false);
-    }, 600);
+    // Si el dispositivo NO tiene una institución con licencia vinculada,
+    // mostrar el diálogo inteligente de bienvenida (onboarding) para preguntar
+    // si desea Modo Prueba o Ingresar a su Institución:
+    if (!registeredDeviceInst) {
+        setTimeout(() => {
+            openOnboardingModal();
+        }, 500);
+    } else {
+        // Mostrar el Pop-up Vertical de su institución al iniciar si está habilitado
+        setTimeout(() => {
+            showStartupPopup(false);
+        }, 600);
+    }
 };
 
-// Event Listeners para Modo Prueba y Selector Institucional
+// Event Listeners para Onboarding y Selector de Institución
+document.getElementById('btn-onboarding-trial')?.addEventListener('click', async () => {
+    closeOnboardingModal();
+    if (currentAccessMode !== 'modo_prueba') {
+        await switchAccessMode('modo_prueba');
+    }
+    showToast('Modo Prueba Universal (30 Días) activo. Usa "Demo 1234" para explorar.', 'info', 4500);
+});
+
+document.getElementById('btn-onboarding-select-inst')?.addEventListener('click', async () => {
+    const select = document.getElementById('select-onboarding-institution') as HTMLSelectElement;
+    const chosenInstId = select?.value || 'ramon_munera';
+    localStorage.setItem('device_registered_institution', chosenInstId);
+    closeOnboardingModal();
+    const targetMode = chosenInstId === 'ramon_munera' ? 'ramon_munera' : 'institucion';
+    await switchAccessMode(targetMode as any);
+    showToast(`Dispositivo vinculado con éxito a: ${institucionData.nombre}`, 'success', 5000);
+});
+
+document.getElementById('btn-close-onboarding-modal')?.addEventListener('click', closeOnboardingModal);
+document.getElementById('btn-trigger-onboarding')?.addEventListener('click', openOnboardingModal);
+document.getElementById('btn-device-switch-institution')?.addEventListener('click', openOnboardingModal);
+
 document.getElementById('btn-toggle-trial-mode')?.addEventListener('click', () => {
     const nextMode = currentAccessMode === 'ramon_munera' ? 'modo_prueba' : 'ramon_munera';
     switchAccessMode(nextMode);
 });
 
 document.getElementById('btn-header-switch-mode')?.addEventListener('click', () => {
-    const nextMode = currentAccessMode === 'ramon_munera' ? 'modo_prueba' : 'ramon_munera';
-    switchAccessMode(nextMode);
+    openOnboardingModal();
 });
 
-document.getElementById('btn-fill-demo-credentials')?.addEventListener('click', () => {
+document.getElementById('btn-fill-demo-credentials')?.addEventListener('click', async () => {
     const sId = document.getElementById('staff-id') as HTMLInputElement;
     const sPin = document.getElementById('staff-pin') as HTMLInputElement;
     if (sId) sId.value = '1234';
     if (sPin) sPin.value = '1234';
-    showToast('Credenciales demo ingresadas: Doc: 1234 / Clave: 1234. Haz clic en "Iniciar Turno".', 'info', 3000);
+    if (currentAccessMode !== 'modo_prueba') {
+        await switchAccessMode('modo_prueba');
+    }
+    showToast('Modo Prueba activado: Doc: 1234 / Clave: 1234. Haz clic en "Iniciar Turno".', 'info', 4000);
 });
 
 document.getElementById('btn-trial-admin-access')?.addEventListener('click', () => {
@@ -4411,6 +5003,30 @@ document.getElementById('btn-trial-admin-access')?.addEventListener('click', () 
         adminPinInput.value = '';
         setTimeout(() => adminPinInput.focus(), 150);
     }
+});
+
+// Event Listeners del Super-Cronómetro y Vueltas (Ed. Física)
+document.getElementById('btn-sw-toggle')?.addEventListener('click', toggleStopwatch);
+document.getElementById('btn-sw-reset')?.addEventListener('click', resetStopwatch);
+document.getElementById('btn-export-laps-excel')?.addEventListener('click', exportLapsToExcel);
+document.getElementById('btn-clear-laps-session')?.addEventListener('click', () => {
+    sessionLaps = [];
+    studentLapData = {};
+    resetStopwatch();
+    renderLapsTable();
+    showToast('Sesión de pruebas reiniciada.', 'info');
+});
+
+// Event Listeners de Salidas y Retornos (Estudiantes Fuera)
+document.getElementById('btn-view-outside-students')?.addEventListener('click', () => {
+    document.getElementById('modal-students-outside')?.classList.remove('hidden');
+    renderOutsideStudentsModal();
+});
+document.getElementById('btn-close-students-outside')?.addEventListener('click', () => {
+    document.getElementById('modal-students-outside')?.classList.add('hidden');
+});
+document.getElementById('btn-refresh-outside-list')?.addEventListener('click', () => {
+    renderOutsideStudentsModal();
 });
 
 initApp();

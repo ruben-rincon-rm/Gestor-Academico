@@ -42,16 +42,20 @@
         .carnet-container { width: 320px; height: 520px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; border: 1px solid #e5e7eb; margin: 0 auto; }
         .carnet-waves { position: absolute; top: 0; left: 0; width: 100%; height: 120px; z-index: 0; }
         
-        /* Selector de fecha con activación de calendario al hacer clic en cualquier parte del recuadro */
+        /* Estilos limpios y visibles para selector de fecha */
         input[type="date"].sa-date-calendar-input {
             color-scheme: dark;
             cursor: pointer;
         }
         input[type="date"].sa-date-calendar-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
-            filter: invert(0.85);
-            font-size: 1.15rem;
+            filter: invert(0.8) sepia(100%) saturate(300%) hue-rotate(5deg);
+            opacity: 0.9;
             padding: 4px;
+            transition: transform 0.2s;
+        }
+        input[type="date"].sa-date-calendar-input::-webkit-calendar-picker-indicator:hover {
+            transform: scale(1.15);
         }
     </style>
 </head>
@@ -1167,6 +1171,20 @@
                                 <i class="fas fa-trash-alt"></i>
                             </button>
                         </div>
+                        <!-- Tarjeta de estado de cuenta actualmente seleccionada -->
+                        <div id="sa-current-inst-badge-box" class="mt-2.5 p-2.5 bg-gray-800/90 rounded-xl border border-amber-500/40 flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2.5">
+                                <span id="sa-current-inst-icon" class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center text-sm font-bold flex-shrink-0"><i class="fas fa-university"></i></span>
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <strong id="sa-current-inst-title" class="text-white font-black text-xs">I.E. Ramón Múnera Lopera</strong>
+                                        <span id="sa-current-inst-type-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 uppercase">Plan Institucional</span>
+                                    </div>
+                                    <span id="sa-current-inst-subtitle" class="text-[10px] text-gray-400 block mt-0.5">Espacio y base de datos 100% individual y separada</span>
+                                </div>
+                            </div>
+                            <span class="text-[10px] text-amber-400 font-bold bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-500/40 whitespace-nowrap">Editando esta cuenta</span>
+                        </div>
                     </div>
 
                     <!-- Datos Básicos e Identidad Visual de la Institución/Persona -->
@@ -1185,10 +1203,18 @@
                         </div>
                         <div>
                             <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Escudo / Logo Oficial</label>
-                            <label class="flex items-center justify-center px-3 py-2 bg-gray-900 hover:bg-gray-800 text-amber-300 border border-gray-700 rounded-xl cursor-pointer text-xs font-bold transition-colors">
-                                <i class="fas fa-upload mr-1.5"></i> Subir Escudo (PNG/JPG)
-                                <input type="file" id="sa-inst-logo-input" class="hidden" accept="image/png, image/jpeg, image/jpg">
-                            </label>
+                            <div class="flex items-center gap-2">
+                                <label class="flex-1 flex items-center justify-center px-3 py-2 bg-gray-900 hover:bg-gray-800 text-amber-300 border border-gray-700 rounded-xl cursor-pointer text-xs font-bold transition-colors">
+                                    <i class="fas fa-upload mr-1.5"></i> Subir Logo / Foto
+                                    <input type="file" id="sa-inst-logo-input" class="hidden" accept="image/png, image/jpeg, image/jpg">
+                                </label>
+                                <div id="sa-logo-preview-wrapper" class="hidden items-center gap-1.5 bg-gray-900 border border-gray-700 rounded-xl px-2 py-1 flex-shrink-0">
+                                    <img id="sa-logo-preview-img" src="" alt="Logo" class="w-6 h-6 object-contain rounded">
+                                    <button type="button" id="btn-sa-remove-logo" title="Quitar logo y usar ícono predeterminado" class="text-red-400 hover:text-red-300 p-0.5 text-xs">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1712,6 +1738,86 @@
                 <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-emerald-700 font-bold hover:underline flex items-center gap-1">
                     <i class="fas fa-shopping-cart text-xs"></i> Adquirir Licencia
                 </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CALENDARIO INTERACTIVO PARA FECHAS DE ACCESO (GARANTIZADO 100% EN CUALQUIER NAVEGADOR) -->
+    <div id="modal-custom-calendar" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs">
+        <div class="bg-gray-900 border-2 border-amber-500/60 rounded-3xl shadow-2xl max-w-sm w-full p-5 text-white flex flex-col relative animate-slide-2">
+            <div class="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-sm font-bold">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-black text-white uppercase tracking-wider" id="cal-modal-title">Seleccionar Fecha de Acceso</h3>
+                        <span class="text-[10px] text-amber-400 font-bold block" id="cal-modal-target-label">Fecha de Vencimiento</span>
+                    </div>
+                </div>
+                <button type="button" id="btn-close-cal-modal" class="text-gray-400 hover:text-white p-1 text-2xl leading-none">&times;</button>
+            </div>
+
+            <!-- Selector de Mes y Año con Flechas de Navegación -->
+            <div class="flex items-center justify-between mb-3 px-1 bg-gray-800/60 p-2 rounded-xl border border-gray-700/60">
+                <button type="button" id="cal-prev-month" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-amber-400 flex items-center justify-center font-bold transition-colors">
+                    <i class="fas fa-chevron-left text-xs"></i>
+                </button>
+                <div class="flex items-center gap-1.5">
+                    <select id="cal-month-select" class="bg-gray-900 border border-gray-700 text-white font-bold text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-amber-400 cursor-pointer">
+                        <option value="0">Enero</option>
+                        <option value="1">Febrero</option>
+                        <option value="2">Marzo</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Mayo</option>
+                        <option value="5">Junio</option>
+                        <option value="6">Julio</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Septiembre</option>
+                        <option value="9">Octubre</option>
+                        <option value="10">Noviembre</option>
+                        <option value="11">Diciembre</option>
+                    </select>
+                    <select id="cal-year-select" class="bg-gray-900 border border-gray-700 text-white font-bold text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-amber-400 cursor-pointer">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                        <option value="2028">2028</option>
+                        <option value="2029">2029</option>
+                        <option value="2030">2030</option>
+                        <option value="2035">2035</option>
+                        <option value="2099">2099</option>
+                    </select>
+                </div>
+                <button type="button" id="cal-next-month" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-amber-400 flex items-center justify-center font-bold transition-colors">
+                    <i class="fas fa-chevron-right text-xs"></i>
+                </button>
+            </div>
+
+            <!-- Días de la semana -->
+            <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-black text-gray-400 uppercase mb-1">
+                <div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sá</div><div>Do</div>
+            </div>
+
+            <!-- Cuadrícula interactiva de días -->
+            <div id="cal-days-grid" class="grid grid-cols-7 gap-1 text-center text-xs font-semibold mb-3 min-h-[170px]">
+                <!-- Días renderizados con renderCalendarGrid() -->
+            </div>
+
+            <!-- Botones de Acceso Rápido / Presets -->
+            <div class="pt-2.5 border-t border-gray-800 flex flex-col gap-1.5">
+                <span class="text-[10px] font-bold text-gray-400 uppercase">Fijar Período con 1 Clic:</span>
+                <div class="grid grid-cols-3 gap-1.5 text-[10px] font-bold">
+                    <button type="button" class="cal-quick-preset bg-gray-800 hover:bg-gray-700 text-gray-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="today">Hoy</button>
+                    <button type="button" class="cal-quick-preset bg-gray-800 hover:bg-gray-700 text-gray-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="plus30">+30 Días</button>
+                    <button type="button" class="cal-quick-preset bg-gray-800 hover:bg-gray-700 text-gray-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="plus90">+90 Días</button>
+                    <button type="button" class="cal-quick-preset bg-gray-800 hover:bg-gray-700 text-gray-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="plus180">+6 Meses</button>
+                    <button type="button" class="cal-quick-preset bg-amber-600 hover:bg-amber-500 text-white py-1.5 px-2 rounded-lg text-center col-span-2 font-black transition-colors" data-type="plus365">+1 Año Escolar (365 d)</button>
+                    <button type="button" class="cal-quick-preset bg-blue-900/80 hover:bg-blue-800 text-blue-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="dec2026">31 Dic 2026</button>
+                    <button type="button" class="cal-quick-preset bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 py-1.5 px-2 rounded-lg text-center transition-colors" data-type="dec2027">31 Dic 2027</button>
+                    <button type="button" class="cal-quick-preset bg-emerald-700 hover:bg-emerald-600 text-white py-1.5 px-2 rounded-lg text-center font-black transition-colors" data-type="perm2099">2099 Perm.</button>
+                </div>
             </div>
         </div>
     </div>

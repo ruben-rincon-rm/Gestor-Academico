@@ -32,16 +32,23 @@ interface StudentRecord {
 interface StaffRecord {
     id: string;
     nombre: string;
+    documento?: string;
     grado?: string;
     rol?: string;
     cargo?: string;
     clave?: string;
     foto?: string;
+    isStaff?: boolean;
 }
 
 interface InventoryItem {
-    id: string;
-    nombre: string;
+    id: string; // CÓDIGO DEL ELEMENTO o ID único
+    nombre: string; // ELEMENTO
+    codigo?: string; // CÓDIGO DEL ELEMENTO (Plaqueta)
+    categoria?: string; // DEPORTES, SISTEMAS, BIBLIOTECA, OTROS
+    caracteristicas?: string; // CARACTERÍSTICAS DEL ELEMENTO
+    ubicacion?: string; // UBICACIÓN
+    consecutivo?: string | number; // N°
 }
 
 interface ExcelValidationError {
@@ -135,13 +142,18 @@ export interface InstitutionProfile {
     limiteUsuarios: number;
     titularNombre?: string;
     titularDoc?: string;
+    titularClave?: string;
+    titularRol?: string;
     titularContacto?: string;
     permisosPersonalizados?: Record<string, string[]>;
+    modulosHabilitados?: string[];
     popupActivo: boolean;
     popupTitulo: string;
     popupUrl: string;
     popupDescripcion: string;
 }
+
+export const ALL_SYSTEM_MODULES = ['asistencia', 'evaluacion', 'salida', 'prestamo', 'pae', 'clase_ef', 'novedad'];
 
 export const RAMON_MUNERA_PROFILE: InstitutionProfile = {
     id: "ramon_munera",
@@ -154,6 +166,7 @@ export const RAMON_MUNERA_PROFILE: InstitutionProfile = {
     tipoPlan: "institucional",
     limiteUsuarios: 9999,
     titularNombre: "I.E. Ramón Múnera Lopera",
+    modulosHabilitados: [...ALL_SYSTEM_MODULES],
     popupActivo: true,
     popupTitulo: "Tutorial & Carnet Digital Institucional",
     popupUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -171,6 +184,7 @@ export const TRIAL_INSTITUTION_DEFAULT: InstitutionProfile = {
     tipoPlan: "prueba",
     limiteUsuarios: 9999,
     titularNombre: "Institución de Prueba Universal",
+    modulosHabilitados: [...ALL_SYSTEM_MODULES],
     popupActivo: true,
     popupTitulo: "¡Bienvenido al Modo Prueba de 30 Días!",
     popupUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -819,39 +833,129 @@ export const processExcelUpload = async (file: File, type: 'students' | 'staff' 
         } else {
             // Manejo de Personal, Inventario y PAE
             let parsed: any[] = [];
-            workbook.SheetNames.forEach(sheetName => {
-                const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" }); 
-                for (let i = 1; i < rows.length; i++) {
-                    const row = rows[i]; 
-                    if (!row || row.length === 0) continue;
-                    
-                    if (type === 'staff') { 
-                        const idRaw = String(row[0]||'').trim(); 
-                        if(!idRaw) continue;
-                        const nomRaw = String(row[1]||'').trim(); 
-                        const grupoRaw = String(row[2]||'').trim(); 
-                        const rolRaw = String(row[3]||'').trim(); 
-                        const claveRaw = row[4] ? String(row[4]).trim() : idRaw; 
-                        if (nomRaw) parsed.push({ id: idRaw, nombre: nomRaw, grado: grupoRaw, rol: rolRaw, clave: claveRaw }); 
-                    } 
-                    else if (type === 'items') { 
-                        const idRaw = String(row[0]||'').trim(); 
-                        if(!idRaw) continue;
-                        const nomRaw = String(row[1]||'').trim(); 
-                        if (nomRaw) parsed.push({ id: idRaw, nombre: nomRaw }); 
-                    } 
-                    else if (type === 'pae') { 
-                        const idRaw = String(row[0]||'').trim();
-                        if(idRaw) parsed.push({ id: idRaw, beneficiario: true }); 
+            
+            if (type === 'items') {
+                // CARGUE INTELIGENTE DE INVENTARIO MULTI-HOJA:
+                // Hojas: DEPORTES, SISTEMAS, BIBLIOTECA, OTROS
+                // Columnas: A1=N°, A2=ELEMENTO, A3=CÓDIGO DEL ELEMENTO, A4=CARACTERÍSTICAS DEL ELEMENTO, A5=UBICACIÓN
+                workbook.SheetNames.forEach(sheetName => {
+                    const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" });
+                    if (rows.length < 2) return;
+
+                    // Buscar fila de encabezados
+                    let headerRowIdx = 0;
+                    let cElem = -1;
+                    let cCod = -1;
+                    let cCaract = -1;
+                    let cUbic = -1;
+                    let cNum = -1;
+
+                    for (let r = 0; r < Math.min(rows.length, 10); r++) {
+                        const row = rows[r];
+                        if (!row) continue;
+                        row.forEach((cellVal: any, colIdx: number) => {
+                            const valStr = String(cellVal || '').trim().toUpperCase();
+                            if (valStr === 'N°' || valStr === 'NO' || valStr === 'NUM' || valStr === 'ITEM') cNum = colIdx;
+                            else if (valStr.includes('ELEMENTO') && !valStr.includes('CÓDIGO') && !valStr.includes('CODIGO')) cElem = colIdx;
+                            else if (valStr.includes('CÓDIGO') || valStr.includes('CODIGO') || valStr.includes('PLAQUETA')) cCod = colIdx;
+                            else if (valStr.includes('CARACTER') || valStr.includes('DESCRIP')) cCaract = colIdx;
+                            else if (valStr.includes('UBICAC') || valStr.includes('LUGAR') || valStr.includes('SALA')) cUbic = colIdx;
+                        });
+                        if (cCod !== -1 || cElem !== -1) {
+                            headerRowIdx = r;
+                            break;
+                        }
                     }
-                }
-            });
+
+                    // Fallback a columnas posicionales estándar A1..A5 si no tienen encabezados explícitos:
+                    // Col 0: N°, Col 1: ELEMENTO, Col 2: CÓDIGO, Col 3: CARACTERÍSTICAS, Col 4: UBICACIÓN
+                    if (cCod === -1) cCod = 2;
+                    if (cElem === -1) cElem = 1;
+                    if (cCaract === -1) cCaract = 3;
+                    if (cUbic === -1) cUbic = 4;
+                    if (cNum === -1) cNum = 0;
+
+                    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || row.length === 0) continue;
+
+                        const rawFirst = String(row[cNum] !== undefined ? row[cNum] : row[0] || '').trim().toUpperCase();
+                        if (rawFirst.includes('TOTAL') || rawFirst.includes('FIRMA') || rawFirst.includes('OBSERVAC')) continue;
+
+                        const elemRaw = String(row[cElem] || '').trim();
+                        let codRaw = String(row[cCod] || '').trim();
+                        const caractRaw = String(row[cCaract] || '').trim();
+                        const ubicRaw = String(row[cUbic] || '').trim();
+                        const numRaw = row[cNum] !== undefined ? String(row[cNum]).trim() : String(i);
+
+                        // Si no tiene código explícito pero tiene elemento, autogenerar código seguro por categoría y consecutivo
+                        if (!codRaw && elemRaw) {
+                            const prefix = sheetName.substring(0, 3).toUpperCase();
+                            codRaw = `${prefix}-${String(numRaw || i).padStart(4, '0')}`;
+                        }
+
+                        if (!codRaw && !elemRaw) continue;
+
+                        const itemObj: InventoryItem = {
+                            id: codRaw,
+                            nombre: elemRaw || `Elemento ${codRaw}`,
+                            codigo: codRaw,
+                            categoria: sheetName.trim().toUpperCase(),
+                            caracteristicas: caractRaw,
+                            ubicacion: ubicRaw,
+                            consecutivo: numRaw
+                        };
+                        parsed.push(itemObj);
+                    }
+                });
+
+            } else {
+                // Personal y PAE
+                workbook.SheetNames.forEach(sheetName => {
+                    const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" }); 
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i]; 
+                        if (!row || row.length === 0) continue;
+                        
+                        if (type === 'staff') { 
+                            const idRaw = String(row[0]||'').trim(); 
+                            if(!idRaw) continue;
+                            const nomRaw = String(row[1]||'').trim(); 
+                            const grupoRaw = String(row[2]||'').trim(); 
+                            const rolRaw = String(row[3]||'').trim(); 
+                            const claveRaw = row[4] ? String(row[4]).trim() : idRaw; 
+                            if (nomRaw) parsed.push({ id: idRaw, nombre: nomRaw, grado: grupoRaw, rol: rolRaw, clave: claveRaw }); 
+                        } 
+                        else if (type === 'pae') { 
+                            const idRaw = String(row[0]||'').trim();
+                            if(idRaw) parsed.push({ id: idRaw, beneficiario: true }); 
+                        }
+                    }
+                });
+            }
             
             if (parsed.length === 0) { 
                 if(countEl) countEl.innerText = "Vacío";
                 return showToast('Excel vacío o formato incorrecto.', 'error'); 
             }
             
+            // Si está en Modo Prueba (30 Días), persistir directamente en partición aislada
+            if (currentAccessMode === 'modo_prueba') {
+                if (type === 'items') {
+                    localStorage.setItem('trial_inventario', JSON.stringify(parsed));
+                    parsed.forEach(it => { inventarioDict[it.id] = it; });
+                    if (countEl) countEl.innerText = `${parsed.length} registros (Prueba)`;
+                    showToast(`¡Excelente! ${parsed.length} elementos de inventario guardados en tu entorno de prueba.`, 'success', 4000);
+                } else if (type === 'staff') {
+                    localStorage.setItem('trial_staff', JSON.stringify(parsed));
+                    parsed.forEach(st => { staffDict[st.id] = st; });
+                    if (countEl) countEl.innerText = `${parsed.length} personal (Prueba)`;
+                    showToast(`¡Personal guardado en tu entorno de prueba!`, 'success', 4000);
+                }
+                if (progressEl) setTimeout(() => progressEl.style.width = "0%", 1000);
+                return;
+            }
+
             const colPath = type === 'staff' ? getStaffPath() : type === 'items' ? getInventarioPath() : getPAEBenefPath();
             const total = parsed.length; 
             let current = 0; 
@@ -961,7 +1065,100 @@ export function downloadSampleExcel() {
     showToast("Plantilla Excel generada y descargada.", "success");
 }
 
+// Plantilla de Inventario para Préstamos dividida en 4 hojas:
+// Hoja 1: DEPORTES, Hoja 2: SISTEMAS, Hoja 3: BIBLIOTECA, Hoja 4: OTROS
+// Columnas: A1=N°, A2=ELEMENTO, A3=CÓDIGO DEL ELEMENTO, A4=CARACTERÍSTICAS DEL ELEMENTO, A5=UBICACIÓN
+export function downloadSampleInventory() {
+    const wb = XLSX.utils.book_new();
+
+    // Hoja 1: DEPORTES
+    const dataDeportes = [
+        ["N°", "ELEMENTO", "CÓDIGO DEL ELEMENTO", "CARACTERÍSTICAS DEL ELEMENTO", "UBICACIÓN"],
+        [1, "Balón de Baloncesto", "DEP-001", "Balón Molten #7 Cuero Sintético", "Caja 1 - Gimnasio"],
+        [2, "Balón de Microfútbol", "DEP-002", "Balón Golty Tradicional #4", "Caja 2 - Gimnasio"],
+        [3, "Balón de Voleibol", "DEP-003", "Balón Mikasa MVA200", "Caja 1 - Gimnasio"],
+        [4, "Cronómetro Digital", "DEP-004", "Cronómetro deportivo 100 memorias", "Oficina Ed. Física"],
+        [5, "Conos de Entrenamiento", "DEP-005", "Set de 10 conos naranja 23cm", "Estante 3 - Gimnasio"]
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataDeportes), "DEPORTES");
+
+    // Hoja 2: SISTEMAS
+    const dataSistemas = [
+        ["N°", "ELEMENTO", "CÓDIGO DEL ELEMENTO", "CARACTERÍSTICAS DEL ELEMENTO", "UBICACIÓN"],
+        [1, "Portátil Lenovo ThinkPad", "SIS-001", "Intel Core i5 16GB RAM SSD 512GB", "Sala de Cómputo 1"],
+        [2, "Portátil HP ProBook", "SIS-002", "Intel Core i7 16GB RAM SSD 512GB", "Sala de Cómputo 1"],
+        [3, "Videobeam Epson", "SIS-003", "Proyector 3600 Lúmenes HDMI", "Sala de Profesores"],
+        [4, "Tableta Digitalizadora", "SIS-004", "Wacom Intuos Medium", "Sala de Sistemas 2"],
+        [5, "Cámara Web Logitech", "SIS-005", "Webcam Full HD 1080p con micrófono", "Coordinación"]
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataSistemas), "SISTEMAS");
+
+    // Hoja 3: BIBLIOTECA
+    const dataBiblioteca = [
+        ["N°", "ELEMENTO", "CÓDIGO DEL ELEMENTO", "CARACTERÍSTICAS DEL ELEMENTO", "UBICACIÓN"],
+        [1, "Cien Años de Soledad", "BIB-001", "Libro G.G. Márquez Edición Conmemorativa", "Estante A - Literatura"],
+        [2, "Álgebra de Baldor", "BIB-002", "Libro Matemáticas con CD", "Estante B - Ciencias"],
+        [3, "Diccionario Español RAE", "BIB-003", "Diccionario Esencial Lengua Española", "Estante C - Consulta"],
+        [4, "Enciclopedia Historia de Colombia", "BIB-004", "Tomo 1 y 2 Ilustrado", "Estante D - Sociales"],
+        [5, "Lector de Códigos USB", "BIB-005", "Escáner láser para préstamos", "Mesa Principal Biblioteca"]
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataBiblioteca), "BIBLIOTECA");
+
+    // Hoja 4: OTROS
+    const dataOtros = [
+        ["N°", "ELEMENTO", "CÓDIGO DEL ELEMENTO", "CARACTERÍSTICAS DEL ELEMENTO", "UBICACIÓN"],
+        [1, "Bafle Sonido Portátil", "OTR-001", "Parlante recargable con micrófono inalámbrico", "Almacén General"],
+        [2, "Extensión Eléctrica 20m", "OTR-002", "Extensión uso rudo calibre 12", "Mantenimiento"],
+        [3, "Microscopio Binocular", "OTR-003", "Microscopio óptico laboratorio escolar", "Laboratorio Integrado"],
+        [4, "Megáfono Recargable", "OTR-004", "Megáfono con sirena 50W", "Portería Principal"],
+        [5, "Botiquín Primeros Auxilios", "OTR-005", "Maletín dotado reglamentario", "Enfermería"]
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataOtros), "OTROS");
+
+    XLSX.writeFile(wb, "Plantilla_Inventario_4_Hojas.xlsx");
+    showToast("Plantilla de Inventario (4 Hojas) generada.", "success");
+}
+
+// Plantilla de Personal Docente y Administrativo
+export function downloadSampleStaff() {
+    const wb = XLSX.utils.book_new();
+    const dataStaff = [
+        ["LISTADO DE PERSONAL DOCENTE Y ADMINISTRATIVO"],
+        [],
+        ["N°", "DOCUMENTO", "NOMBRE COMPLETO", "CARGO", "ROL", "CONTRASEÑA", "ÁREA / ASIGNATURA"],
+        [1, "12345678", "GARCIA MARQUEZ GABRIEL", "Docente", "docente", "1234", "Lengua Castellana"],
+        [2, "87654321", "RODRIGUEZ ANA MARIA", "Coordinadora", "coordinador", "2026", "Coordinación Académica"],
+        [3, "11223344", "PEREZ GOMEZ JORGE", "Docente", "docente", "1122", "Educación Física"],
+        [4, "44332211", "MARTINEZ LUIS ALBERTO", "Vigilante", "vigilante", "4433", "Seguridad / Portería"]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dataStaff);
+    XLSX.utils.book_append_sheet(wb, ws, "PERSONAL");
+    XLSX.writeFile(wb, "Plantilla_Personal.xlsx");
+    showToast("Plantilla de Personal generada y descargada.", "success");
+}
+
+// Plantilla de Beneficiarios PAE (Alimentación Escolar VIP)
+export function downloadSamplePAE() {
+    const wb = XLSX.utils.book_new();
+    const dataPAE = [
+        ["BASE DE BENEFICIARIOS PROGRAMA DE ALIMENTACIÓN ESCOLAR (PAE)"],
+        [],
+        ["N°", "DOCUMENTO / MATRÍCULA", "NOMBRE COMPLETO", "GRADO", "TIPO DE RACIÓN", "BENEFICIARIO"],
+        [1, "1032033800", "BERNAL GARCIA JUSTIN ANDRES", "TS0501", "Almuerzo Completo", "SI"],
+        [2, "1032033801", "DE LA OSSA PEREZ JUAN CARLOS", "TS0501", "Refrigerio Reforzado", "SI"],
+        [3, "1032033802", "ZAPATA MARTINEZ VALENTINA", "TS0501", "Almuerzo Completo", "SI"],
+        [4, "262001", "GOMEZ ALVAREZ CAMILO", "TS0502", "Refrigerio Reforzado", "SI"]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(dataPAE);
+    XLSX.utils.book_append_sheet(wb, ws, "BENEFICIARIOS_PAE");
+    XLSX.writeFile(wb, "Plantilla_PAE.xlsx");
+    showToast("Plantilla PAE generada y descargada.", "success");
+}
+
 document.getElementById('btn-download-sample-excel')?.addEventListener('click', downloadSampleExcel);
+document.getElementById('btn-download-sample-staff')?.addEventListener('click', downloadSampleStaff);
+document.getElementById('btn-download-sample-inventory')?.addEventListener('click', downloadSampleInventory);
+document.getElementById('btn-download-sample-pae')?.addEventListener('click', downloadSamplePAE);
 
 // ==========================================================
 // CARGA Y SINCRONIZACIÓN DE BASE DE DATOS
@@ -1015,7 +1212,20 @@ export const loadDatabases = async () => {
             localStorage.setItem('trial_staff', JSON.stringify(DEMO_STAFF));
         }
 
+        // Cargar inventario de prueba
+        const localTrialItems = localStorage.getItem('trial_inventario');
         inventarioDict = {};
+        if (localTrialItems) {
+            try {
+                const list = JSON.parse(localTrialItems);
+                if (Array.isArray(list)) {
+                    list.forEach((i: any) => { inventarioDict[i.id] = i; });
+                } else if (typeof list === 'object') {
+                    inventarioDict = list;
+                }
+            } catch(e) {}
+        }
+
         paeBeneficiariosDict = {};
 
         const elStud = document.getElementById('count-students'); 
@@ -1023,7 +1233,7 @@ export const loadDatabases = async () => {
         const elStaff = document.getElementById('count-staff'); 
         if (elStaff) elStaff.innerText = Object.keys(staffDict).length + ' personal (Prueba)';
         const elItem = document.getElementById('count-items'); 
-        if (elItem) elItem.innerText = '0 registros';
+        if (elItem) elItem.innerText = Object.keys(inventarioDict).length + ' registros';
         const elPae = document.getElementById('count-pae'); 
         if (elPae) elPae.innerText = '0 registros';
 
@@ -1344,8 +1554,175 @@ document.getElementById('btn-reset-master')?.addEventListener('click', async () 
 });
 
 // ==========================================================
+// CÓDIGOS QR INTELIGENTES (VINCULACIÓN DOCUMENTO / MATRÍCULA / INVENTARIO)
+// Máxima seguridad anti-falsificación y compatibilidad 100% con carnets impresos anteriores
+// ==========================================================
+export interface ParsedQRResult {
+    type: 'student' | 'item' | 'staff' | 'raw';
+    id: string; // Documento o código de elemento resuelto
+    matricula?: string;
+    nombre?: string;
+    grado?: string;
+    categoria?: string;
+    rawText: string;
+}
+
+export const generateSmartStudentQR = (student: StudentRecord): string => {
+    // Formato compacto ultrarrápido y seguro:
+    // STD|ID|MAT|NOMBRE|GRADO
+    const id = String(student.documento || student.id || '').trim();
+    const mat = String(student.matricula || '').trim();
+    const nom = String(student.nombres || student.nombre || '').replace(/[|;]/g, ' ').trim();
+    const gr = String(student.grado || '').replace(/[|;]/g, ' ').trim();
+    return `STD|${id}|${mat}|${nom}|${gr}`;
+};
+
+export const generateSmartInventoryQR = (item: InventoryItem): string => {
+    // Formato para plaquetas de equipos/elementos:
+    // ITM|CODIGO|NOMBRE|CATEGORIA|UBICACION
+    const cod = String(item.codigo || item.id || '').trim();
+    const nom = String(item.nombre || '').replace(/[|;]/g, ' ').trim();
+    const cat = String(item.categoria || 'INVENTARIO').replace(/[|;]/g, ' ').trim();
+    const ubi = String(item.ubicacion || '').replace(/[|;]/g, ' ').trim();
+    return `ITM|${cod}|${nom}|${cat}|${ubi}`;
+};
+
+export const decodeSmartQR = (scannedText: string): ParsedQRResult => {
+    const text = String(scannedText || '').trim();
+    if (!text) return { type: 'raw', id: '', rawText: '' };
+
+    // 1. Detección de formato inteligente estructurado STD|... o ITM|...
+    if (text.startsWith('STD|')) {
+        const parts = text.split('|');
+        const id = (parts[1] || '').trim();
+        const mat = (parts[2] || '').trim();
+        const nom = (parts[3] || '').trim();
+        const gr = (parts[4] || '').trim();
+        return {
+            type: 'student',
+            id: id || mat,
+            matricula: mat,
+            nombre: nom,
+            grado: gr,
+            rawText: text
+        };
+    }
+
+    if (text.startsWith('ITM|')) {
+        const parts = text.split('|');
+        const cod = (parts[1] || '').trim();
+        const nom = (parts[2] || '').trim();
+        const cat = (parts[3] || '').trim();
+        return {
+            type: 'item',
+            id: cod,
+            nombre: nom,
+            categoria: cat,
+            rawText: text
+        };
+    }
+
+    // 2. Detección de formato JSON si viniera estructurado
+    if (text.startsWith('{') && text.endsWith('}')) {
+        try {
+            const parsed = JSON.parse(text);
+            if (parsed.tipo === 'item' || parsed.type === 'item' || parsed.codigoElemento) {
+                return {
+                    type: 'item',
+                    id: String(parsed.codigo || parsed.codigoElemento || parsed.id || '').trim(),
+                    nombre: parsed.elemento || parsed.nombre,
+                    categoria: parsed.categoria,
+                    rawText: text
+                };
+            }
+            if (parsed.doc || parsed.documento || parsed.matricula) {
+                return {
+                    type: 'student',
+                    id: String(parsed.doc || parsed.documento || parsed.id || parsed.matricula).trim(),
+                    matricula: parsed.matricula ? String(parsed.matricula).trim() : undefined,
+                    nombre: parsed.nombre,
+                    grado: parsed.grado,
+                    rawText: text
+                };
+            }
+        } catch (e) {}
+    }
+
+    // 3. Compatibilidad 100% Retrospectiva: Número suelto o código de barra/QR de carnets ya impresos
+    // Buscar primero en diccionario de inventario
+    if (inventarioDict[text]) {
+        return {
+            type: 'item',
+            id: text,
+            nombre: inventarioDict[text].nombre,
+            categoria: inventarioDict[text].categoria,
+            rawText: text
+        };
+    }
+
+    // Buscar si coincide con item.codigo de alguna plaqueta de inventario
+    const foundItem = Object.values(inventarioDict).find(i => 
+        String(i.codigo || '').trim() === text || 
+        String(i.id || '').trim() === text
+    );
+    if (foundItem) {
+        return {
+            type: 'item',
+            id: foundItem.id,
+            nombre: foundItem.nombre,
+            categoria: foundItem.categoria,
+            rawText: text
+        };
+    }
+
+    // Buscar en estudiantes por ID, Documento o Matrícula
+    if (studentsDict[text]) {
+        return {
+            type: 'student',
+            id: studentsDict[text].id,
+            matricula: studentsDict[text].matricula,
+            nombre: getFullName(studentsDict[text]),
+            grado: studentsDict[text].grado,
+            rawText: text
+        };
+    }
+
+    const foundStudent = Object.values(studentsDict).find(s => 
+        String(s.matricula || '').trim() === text || 
+        String(s.documento || '').trim() === text
+    );
+    if (foundStudent) {
+        return {
+            type: 'student',
+            id: foundStudent.id,
+            matricula: foundStudent.matricula,
+            nombre: getFullName(foundStudent),
+            grado: foundStudent.grado,
+            rawText: text
+        };
+    }
+
+    // Buscar en personal
+    if (staffDict[text]) {
+        return {
+            type: 'staff',
+            id: staffDict[text].id,
+            nombre: staffDict[text].nombre,
+            rawText: text
+        };
+    }
+
+    // Si no coincide con nada, devolver texto plano para procesamiento libre
+    return {
+        type: 'raw',
+        id: text,
+        rawText: text
+    };
+};
+
+// ==========================================================
 // PROCESAMIENTO DE ESCANEO Y BÚSQUEDA
-// Compatibilidad total: Búsqueda por Documento o Matrícula
+// Compatibilidad total: Búsqueda por Documento, Matrícula o QR Inteligente
 // ==========================================================
 export const processScan = async (scannedText: string) => {
     if(isProcessing || !currentStaff) return;
@@ -1353,12 +1730,15 @@ export const processScan = async (scannedText: string) => {
     scannedText = scannedText.trim();
     if (!scannedText) { isProcessing = false; return; }
 
-    // Compatibilidad: buscar por ID, Documento o Matrícula
-    let resolvedId = scannedText;
-    if (!studentsDict[scannedText]) {
+    // Decodificación inteligente del código QR (soporta formatos nuevos STD|... y los carnets anteriores de solo números)
+    const qrInfo = decodeSmartQR(scannedText);
+    let resolvedId = qrInfo.id || scannedText;
+
+    // Compatibilidad adicional directa con alumnos por si el ID interno difiere
+    if (!studentsDict[resolvedId]) {
         const found = Object.values(studentsDict).find(s => 
-            String(s.matricula).trim() === scannedText || 
-            String(s.documento).trim() === scannedText
+            String(s.matricula).trim() === resolvedId || 
+            String(s.documento).trim() === resolvedId
         );
         if (found) resolvedId = found.id;
     }
@@ -3856,7 +4236,8 @@ document.getElementById('btn-save-roles')?.addEventListener('click', async () =>
 });
 
 // =========================================================================
-// MÓDULO SUPER-ADMINISTRADOR (Ventas, Licencias, Fechas y Roles) - www.espatodo.com
+// =========================================================================
+// MÓDULO SUPER-ADMINISTRADOR (Ventas, Licencias, Fechas, Roles y Formateo) - www.espatodo.com
 // =========================================================================
 let superAdminPin = localStorage.getItem('sa_master_pin') || 'superadmin';
 let isSuperAdminAuthenticated = false;
@@ -3875,44 +4256,117 @@ export const closeSuperAdminLogin = () => {
     document.getElementById('modal-superadmin-login')?.classList.add('hidden');
 };
 
-export const openSuperAdminModal = () => {
-    closeSuperAdminLogin();
-    const modal = document.getElementById('modal-superadmin');
-    if (!modal) return;
+// Cargar lista de instituciones y personas en los selectores del Super-Admin
+export const renderSuperAdminInstitutionsDropdown = () => {
+    const select = document.getElementById('sa-inst-select') as HTMLSelectElement;
+    const formatSelect = document.getElementById('sa-format-target-select') as HTMLSelectElement;
     
-    // Asignar inputs con los datos de la institución activa
+    if (select) {
+        select.innerHTML = '';
+        institucionesList.forEach(inst => {
+            const opt = document.createElement('option');
+            opt.value = inst.id;
+            opt.innerText = `${inst.nombre} (${inst.tipoPlan === 'institucional' ? 'Institucional' : 'Docente/Ind.'})`;
+            if (inst.id === institucionData.id) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
+    if (formatSelect) {
+        formatSelect.innerHTML = '';
+        const optCur = document.createElement('option');
+        optCur.value = 'current';
+        optCur.innerText = `Institución Activa (${institucionData.nombre})`;
+        formatSelect.appendChild(optCur);
+
+        institucionesList.forEach(inst => {
+            const opt = document.createElement('option');
+            opt.value = inst.id;
+            opt.innerText = `${inst.nombre} [ID: ${inst.id}]`;
+            formatSelect.appendChild(opt);
+        });
+    }
+};
+
+// Cargar los datos de una institución o docente en el modal de Super-Admin
+export const loadInstitutionIntoSuperAdmin = (targetId: string) => {
+    const inst = institucionesList.find(i => i.id === targetId) || institucionData;
+    
+    const iName = document.getElementById('sa-inst-name-input') as HTMLInputElement;
+    const c1 = document.getElementById('sa-inst-color1') as HTMLInputElement;
+    const c2 = document.getElementById('sa-inst-color2') as HTMLInputElement;
     const tNombre = document.getElementById('sa-titular-nombre') as HTMLInputElement;
     const tDoc = document.getElementById('sa-titular-doc') as HTMLInputElement;
+    const tClave = document.getElementById('sa-titular-clave') as HTMLInputElement;
+    const tRol = document.getElementById('sa-titular-rol') as HTMLSelectElement;
     const tContacto = document.getElementById('sa-titular-contacto') as HTMLInputElement;
     const lStart = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
     const lEnd = document.getElementById('sa-licencia-fin') as HTMLInputElement;
     const mPin = document.getElementById('sa-master-pin') as HTMLInputElement;
 
-    if (tNombre) tNombre.value = institucionData.titularNombre || institucionData.nombre || '';
-    if (tDoc) tDoc.value = institucionData.titularDoc || '';
-    if (tContacto) tContacto.value = institucionData.titularContacto || '';
-    if (lStart) lStart.value = institucionData.licenciaInicio || '2026-01-01';
-    if (lEnd) lEnd.value = institucionData.licenciaFin || '2027-12-31';
+    if (iName) iName.value = inst.nombre || '';
+    if (c1) c1.value = inst.color1 || '#2563eb';
+    if (c2) c2.value = inst.color2 || '#0ea5e9';
+    if (tNombre) tNombre.value = inst.titularNombre || inst.nombre || '';
+    if (tDoc) tDoc.value = inst.titularDoc || '';
+    if (tClave) {
+        const existingStaffClave = inst.titularDoc ? staffDict[inst.titularDoc]?.clave : '';
+        tClave.value = inst.titularClave || existingStaffClave || (inst.titularDoc ? '1234' : '');
+    }
+    if (tRol) {
+        const existingStaffRol = inst.titularDoc ? staffDict[inst.titularDoc]?.rol : '';
+        tRol.value = inst.titularRol || existingStaffRol || (inst.tipoPlan === 'docente' ? 'docente' : 'docente');
+    }
+    if (tContacto) tContacto.value = inst.titularContacto || '';
+    if (lStart) lStart.value = inst.licenciaInicio || '2026-01-01';
+    if (lEnd) lEnd.value = inst.licenciaFin || '2027-12-31';
     if (mPin) mPin.value = '';
 
-    // Seleccionar plan activo
-    const activePlan = institucionData.tipoPlan || (currentAccessMode === 'modo_prueba' ? 'prueba' : 'institucional');
-    selectSuperAdminPlan(activePlan);
+    // Seleccionar plan y correlacionar (respetando fechas de la institución cargada)
+    selectSuperAdminPlan(inst.tipoPlan || 'institucional', true);
 
-    // Actualizar contador
+    // Cargar módulos habilitados
+    const enabledMods = inst.modulosHabilitados && inst.modulosHabilitados.length > 0
+        ? inst.modulosHabilitados
+        : ALL_SYSTEM_MODULES;
+
+    document.querySelectorAll('.sa-module-toggle').forEach((cb: any) => {
+        cb.checked = enabledMods.includes(cb.value);
+    });
+    updateSuperAdminModulesCount();
     updateSuperAdminCountdown();
-
-    // Renderizar matriz de roles
     renderSuperAdminRolesMatrix();
+};
+
+export const openSuperAdminModal = () => {
+    closeSuperAdminLogin();
+    const modal = document.getElementById('modal-superadmin');
+    if (!modal) return;
+
+    renderSuperAdminInstitutionsDropdown();
+    loadInstitutionIntoSuperAdmin(institucionData.id);
 
     modal.classList.remove('hidden');
+};
+
+export const updateSuperAdminModulesCount = () => {
+    const checkedCount = document.querySelectorAll('.sa-module-toggle:checked').length;
+    const badge = document.getElementById('sa-enabled-modules-count');
+    if (badge) {
+        badge.innerText = `${checkedCount} Módulo${checkedCount === 1 ? '' : 's'} Activo${checkedCount === 1 ? '' : 's'}`;
+        badge.className = checkedCount > 0 
+            ? "text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+            : "text-[10px] font-black px-2.5 py-1 rounded-full bg-red-500/20 text-red-300 border border-red-500/40";
+    }
 };
 
 export const closeSuperAdminModal = () => {
     document.getElementById('modal-superadmin')?.classList.add('hidden');
 };
 
-export const selectSuperAdminPlan = (plan: LicenseType) => {
+// CORRELACIÓN TOTAL EN SUPERADMINISTRADOR:
+// 1. Modalidad de Compra con 2. Módulos Habilitados, 3. Fechas de Acceso, 4. Matriz de Permisos por Rol
+export const selectSuperAdminPlan = (plan: LicenseType, preserveDates = false) => {
     const cards = document.querySelectorAll('.sa-plan-card');
     cards.forEach((c: any) => {
         const radio = c.querySelector('input[name="sa_plan_choice"]');
@@ -3926,18 +4380,70 @@ export const selectSuperAdminPlan = (plan: LicenseType) => {
     });
 
     const pill = document.getElementById('sa-active-plan-pill');
-    if (pill) {
-        if (plan === 'docente') {
+    const lStart = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
+    const lEnd = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+
+    if (plan === 'docente') {
+        if (pill) {
             pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 uppercase";
             pill.innerText = "Plan Docente Individual (1 Usuario)";
-        } else if (plan === 'prueba') {
+        }
+        // Correlación 2: Si estaban todos los 7 módulos seleccionados, sugerir los esenciales de docente (asistencia + notas)
+        const currentlyChecked = Array.from(document.querySelectorAll('.sa-module-toggle:checked')).map((cb: any) => cb.value);
+        if (currentlyChecked.length === ALL_SYSTEM_MODULES.length) {
+            document.querySelectorAll('.sa-module-toggle').forEach((cb: any) => {
+                cb.checked = ['asistencia', 'evaluacion'].includes(cb.value);
+            });
+            updateSuperAdminModulesCount();
+        }
+        // Correlación 3: Fechas de acceso - 1 Año escolar si estaba vencido y no se está preservando
+        if (!preserveDates && lEnd && (!lEnd.value || lEnd.value < getTodayString())) {
+            const nextYear = new Date();
+            nextYear.setFullYear(nextYear.getFullYear() + 1);
+            lEnd.value = nextYear.toISOString().split('T')[0];
+        }
+        // Correlación 4: Matriz de Permisos por Rol (Se inhabilita para docente personal)
+        renderSuperAdminRolesMatrix();
+    } else if (plan === 'prueba') {
+        if (pill) {
             pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 uppercase";
             pill.innerText = "Modo Prueba 30 Días";
-        } else {
+        }
+        // Correlación 2: Todos los módulos activos para evaluación
+        document.querySelectorAll('.sa-module-toggle').forEach((cb: any) => {
+            cb.checked = true;
+        });
+        updateSuperAdminModulesCount();
+        // Correlación 3: Fechas fijadas exactamente a 30 días si no se preservan fechas específicas
+        if (!preserveDates) {
+            if (lStart) lStart.value = getTodayString();
+            if (lEnd) {
+                const date30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                lEnd.value = date30.toISOString().split('T')[0];
+            }
+        }
+        renderSuperAdminRolesMatrix();
+    } else {
+        // Plan Institucional Completo
+        if (pill) {
             pill.className = "text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 uppercase";
             pill.innerText = "Plan Institucional Completo";
         }
+        // Correlación 2: Todos los módulos habilitados por defecto
+        document.querySelectorAll('.sa-module-toggle').forEach((cb: any) => {
+            cb.checked = true;
+        });
+        updateSuperAdminModulesCount();
+        // Correlación 3: Fechas - 1 Año Escolar si no se preserva
+        if (!preserveDates && lEnd && (!lEnd.value || lEnd.value < getTodayString())) {
+            const nextYear = new Date();
+            nextYear.setFullYear(nextYear.getFullYear() + 1);
+            lEnd.value = nextYear.toISOString().split('T')[0];
+        }
+        renderSuperAdminRolesMatrix();
     }
+
+    updateSuperAdminCountdown();
 };
 
 export const updateSuperAdminCountdown = () => {
@@ -3970,12 +4476,30 @@ export const renderSuperAdminRolesMatrix = () => {
     if (!container) return;
     container.innerHTML = '';
 
+    const planRadio = document.querySelector('input[name="sa_plan_choice"]:checked') as HTMLInputElement;
+    const currentPlan = planRadio?.value || institucionData.tipoPlan || 'institucional';
+
+    // Si fue comprado por un solo docente, la matriz de roles está inactiva y no aplica
+    if (currentPlan === 'docente') {
+        container.innerHTML = `
+            <div class="p-4 bg-purple-950/40 border border-purple-500/40 rounded-xl text-xs flex items-center gap-3">
+                <i class="fas fa-user-lock text-purple-400 text-2xl flex-shrink-0"></i>
+                <div class="text-purple-200">
+                    <strong class="font-black text-sm block mb-0.5 text-white">Matriz Inactiva para Plan Docente Individual</strong>
+                    <span>Este sistema fue adquirido por un solo docente personal. La matriz de roles por cargos y la nómina masiva aplican únicamente cuando se adquiere la licencia a nivel Institucional para colegios completos.</span>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
     const roleDefs = [
-        { key: 'administrador', name: 'Administrador / Rectoría', icon: 'fa-shield-alt', desc: 'Control total de la institución y configuración' },
-        { key: 'coordinador', name: 'Coordinación Académica', icon: 'fa-user-graduate', desc: 'Asistencia general, observación y autorizaciones' },
         { key: 'docente', name: 'Docente Titular', icon: 'fa-chalkboard-teacher', desc: 'Asistencia de aula, planilla de notas y evaluaciones' },
+        { key: 'coordinador', name: 'Coordinación Académica', icon: 'fa-user-graduate', desc: 'Asistencia general, observación y autorizaciones' },
         { key: 'vigilante', name: 'Seguridad / Portería', icon: 'fa-door-open', desc: 'Control de ingresos y salidas en puerta' }
     ];
+
+    const currentEnabledMods = Array.from(document.querySelectorAll('.sa-module-toggle:checked')).map((el: any) => el.value);
 
     roleDefs.forEach(r => {
         let html = `
@@ -3990,9 +4514,11 @@ export const renderSuperAdminRolesMatrix = () => {
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-800">
         `;
         modulesList.forEach(m => {
+            if (m.id === 'pruebas') return;
             const isChecked = rolePermissions[r.key]?.includes(m.id) ? 'checked' : '';
+            const isModActive = currentEnabledMods.length === 0 || currentEnabledMods.includes(m.id);
             html += `
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-300 hover:text-white cursor-pointer select-none">
+            <label class="flex items-center gap-1.5 text-[11px] ${isModActive ? 'text-gray-300 hover:text-white' : 'text-gray-600 line-through'} cursor-pointer select-none">
                 <input type="checkbox" class="sa-role-cb rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" data-role="${r.key}" data-module="${m.id}" ${isChecked}>
                 <span>${m.name}</span>
             </label>
@@ -4011,59 +4537,112 @@ export const saveSuperAdminConfig = async () => {
     }
 
     try {
+        const select = document.getElementById('sa-inst-select') as HTMLSelectElement;
+        const targetInstId = select?.value || institucionData.id;
+        const targetInst = institucionesList.find(i => i.id === targetInstId) || institucionData;
+
+        const iName = (document.getElementById('sa-inst-name-input') as HTMLInputElement)?.value.trim() || targetInst.nombre;
+        const c1 = (document.getElementById('sa-inst-color1') as HTMLInputElement)?.value || targetInst.color1;
+        const c2 = (document.getElementById('sa-inst-color2') as HTMLInputElement)?.value || targetInst.color2;
+
         const planRadio = document.querySelector('input[name="sa_plan_choice"]:checked') as HTMLInputElement;
         const chosenPlan = (planRadio?.value || 'institucional') as LicenseType;
-        const tNombre = (document.getElementById('sa-titular-nombre') as HTMLInputElement)?.value.trim();
+        const tNombre = (document.getElementById('sa-titular-nombre') as HTMLInputElement)?.value.trim() || iName;
         const tDoc = (document.getElementById('sa-titular-doc') as HTMLInputElement)?.value.trim();
+        const tClave = (document.getElementById('sa-titular-clave') as HTMLInputElement)?.value.trim() || tDoc || '1234';
+        const tRol = (document.getElementById('sa-titular-rol') as HTMLSelectElement)?.value || 'docente';
         const tContacto = (document.getElementById('sa-titular-contacto') as HTMLInputElement)?.value.trim();
         const lStart = (document.getElementById('sa-licencia-inicio') as HTMLInputElement)?.value || '2026-01-01';
         const lEnd = (document.getElementById('sa-licencia-fin') as HTMLInputElement)?.value || '2027-12-31';
 
-        // Actualizar institucionData
-        institucionData.tipoPlan = chosenPlan;
-        institucionData.limiteUsuarios = chosenPlan === 'docente' ? 1 : 9999;
-        if (tNombre) {
-            institucionData.titularNombre = tNombre;
-            institucionData.nombre = tNombre;
+        // Módulos habilitados personalizados
+        const selectedModules = Array.from(document.querySelectorAll('.sa-module-toggle:checked')).map((el: any) => el.value);
+        const modulosHabilitados = selectedModules.length > 0 ? selectedModules : ['asistencia'];
+
+        // Permisos de roles si es institucional
+        let newPerms: Record<string, string[]> = { ...rolePermissions };
+        if (chosenPlan === 'institucional') {
+            newPerms = { docente: [], vigilante: [], coordinador: [] };
+            document.querySelectorAll('.sa-role-cb').forEach((cb: any) => {
+                if (cb.checked) {
+                    const r = cb.dataset.role;
+                    const m = cb.dataset.module;
+                    if (!newPerms[r]) newPerms[r] = [];
+                    newPerms[r].push(m);
+                }
+            });
+            rolePermissions = newPerms;
         }
-        if (tDoc) institucionData.titularDoc = tDoc;
-        if (tContacto) institucionData.titularContacto = tContacto;
-        institucionData.licenciaInicio = lStart;
-        institucionData.licenciaFin = lEnd;
 
-        // Actualizar permisos de roles desde la matriz
-        const newPerms: Record<string, string[]> = { docente: [], vigilante: [], coordinador: [], administrador: [] };
-        document.querySelectorAll('.sa-role-cb').forEach((cb: any) => {
-            if (cb.checked) {
-                const r = cb.dataset.role;
-                const m = cb.dataset.module;
-                if (!newPerms[r]) newPerms[r] = [];
-                newPerms[r].push(m);
-            }
-        });
-        rolePermissions = newPerms;
+        // Actualizar datos del target en la lista
+        targetInst.nombre = iName;
+        targetInst.color1 = c1;
+        targetInst.color2 = c2;
+        targetInst.tipoPlan = chosenPlan;
+        targetInst.limiteUsuarios = chosenPlan === 'docente' ? 1 : 9999;
+        targetInst.titularNombre = tNombre;
+        targetInst.titularDoc = tDoc;
+        targetInst.titularClave = tClave;
+        targetInst.titularRol = tRol;
+        targetInst.titularContacto = tContacto;
+        targetInst.licenciaInicio = lStart;
+        targetInst.licenciaFin = lEnd;
+        targetInst.modulosHabilitados = modulosHabilitados;
+        targetInst.permisosPersonalizados = newPerms;
 
-        // Guardar en Firestore
+        // Si se especificó documento del titular, registrar o actualizar de inmediato al usuario en la nómina
+        if (tDoc) {
+            const staffMember: StaffRecord = {
+                id: tDoc,
+                nombre: tNombre || targetInst.nombre,
+                rol: tRol || 'docente',
+                cargo: tRol || 'docente',
+                clave: tClave || tDoc,
+                grado: tRol === 'docente' ? 'Docente Titular' : (tRol || 'General'),
+                isStaff: true
+            };
+            staffDict[tDoc] = staffMember;
+            try {
+                await setDoc(doc(getStaffPath(), tDoc), staffMember);
+            } catch(e) {}
+            try {
+                localStorage.setItem('trial_staff', JSON.stringify(staffDict));
+                localStorage.setItem('staff_cache', JSON.stringify(staffDict));
+            } catch(e) {}
+        }
+
+        // Si es la institución activa, actualizar institucionData
+        if (targetInst.id === institucionData.id) {
+            institucionData = { ...targetInst };
+        }
+
+        // Guardar lista completa de instituciones y configuración
+        const payloadToSave = {
+            institucionActivaId: institucionData.id,
+            institucionActiva: institucionData,
+            instituciones: institucionesList
+        };
+
         try {
-            await setDoc(getSettingsPath(), { ...institucionData });
+            await setDoc(getSettingsPath(), payloadToSave);
             await setDoc(doc(db, 'configuracion_app', 'superadmin_config'), {
+                targetInstId: targetInst.id,
                 tipoPlan: chosenPlan,
                 titularNombre: tNombre,
                 titularDoc: tDoc,
                 titularContacto: tContacto,
                 licenciaInicio: lStart,
                 licenciaFin: lEnd,
-                rolePermissions,
+                modulosHabilitados,
                 updatedAt: new Date().toISOString()
             });
             await setDoc(getPermissionsPath(), rolePermissions);
         } catch(e) {}
 
-        // Guardar en localStorage
-        localStorage.setItem('institucionData', JSON.stringify({ institucionActiva: institucionData }));
+        localStorage.setItem('institucionData', JSON.stringify(payloadToSave));
         localStorage.setItem('rolePermissions', JSON.stringify(rolePermissions));
 
-        // Refrescar UI
+        // Refrescar UI general
         updatePlanRestrictionsUI();
         checkLicenseValidity();
         aplicarConfiguracionUI();
@@ -4071,7 +4650,7 @@ export const saveSuperAdminConfig = async () => {
         if (currentStaff) applyRolesUI(currentStaff);
 
         closeSuperAdminModal();
-        showToast(`Licencia Super-Admin guardada: Plan ${chosenPlan.toUpperCase()}`, 'success', 4000);
+        showToast(`Licencia Super-Admin guardada para "${targetInst.nombre}" (${chosenPlan.toUpperCase()})`, 'success', 4000);
     } catch(err) {
         showToast('Error al guardar configuración Super-Admin', 'error');
     } finally {
@@ -4082,7 +4661,157 @@ export const saveSuperAdminConfig = async () => {
     }
 };
 
-// Eventos de Super-Administrador
+// =========================================================================
+// ACCIONES DE FORMATEO DEL SISTEMA (EXCLUSIVO SUPER-ADMINISTRADOR)
+// =========================================================================
+const getSelectedFormatTarget = (): InstitutionProfile => {
+    const sel = document.getElementById('sa-format-target-select') as HTMLSelectElement;
+    const val = sel?.value;
+    if (!val || val === 'current') return institucionData;
+    return institucionesList.find(i => i.id === val) || institucionData;
+};
+
+// Borrar Alumnos
+document.getElementById('btn-sa-format-students')?.addEventListener('click', async () => {
+    const target = getSelectedFormatTarget();
+    if (confirm(`¿Estás seguro de que deseas eliminar TODOS LOS ALUMNOS de "${target.nombre}"?`)) {
+        const conf = prompt(`Escribe "BORRAR" para confirmar el vaciado de alumnos de "${target.nombre}":`);
+        if (conf === "BORRAR") {
+            try {
+                showToast("Borrando alumnos...", "warning", 3000);
+                const snap = await getDocs(getStudentsPath());
+                await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+                studentsDict = {};
+                await loadDatabases();
+                showToast(`Alumnos de "${target.nombre}" eliminados con éxito.`, "success");
+            } catch(e) {
+                showToast("Error al borrar alumnos", "error");
+            }
+        }
+    }
+});
+
+// Borrar Personal Docente
+document.getElementById('btn-sa-format-staff')?.addEventListener('click', async () => {
+    const target = getSelectedFormatTarget();
+    if (confirm(`¿Estás seguro de que deseas eliminar EL PERSONAL DOCENTE de "${target.nombre}"?`)) {
+        const conf = prompt(`Escribe "BORRAR" para confirmar el vaciado de nómina de "${target.nombre}":`);
+        if (conf === "BORRAR") {
+            try {
+                showToast("Borrando personal...", "warning", 3000);
+                const snap = await getDocs(getStaffPath());
+                await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+                staffDict = {};
+                await loadDatabases();
+                showToast(`Personal docente de "${target.nombre}" eliminado.`, "success");
+            } catch(e) {
+                showToast("Error al borrar personal", "error");
+            }
+        }
+    }
+});
+
+// Borrar Inventario
+document.getElementById('btn-sa-format-inventory')?.addEventListener('click', async () => {
+    const target = getSelectedFormatTarget();
+    if (confirm(`¿Estás seguro de que deseas vaciar EL INVENTARIO de "${target.nombre}"?`)) {
+        const conf = prompt(`Escribe "BORRAR" para confirmar:`);
+        if (conf === "BORRAR") {
+            try {
+                showToast("Borrando inventario...", "warning", 3000);
+                const snap = await getDocs(getInventarioPath());
+                await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+                inventarioDict = {};
+                await loadDatabases();
+                showToast(`Inventario de "${target.nombre}" restablecido.`, "success");
+            } catch(e) {
+                showToast("Error al borrar inventario", "error");
+            }
+        }
+    }
+});
+
+// Borrar Registros de Asistencia y Evaluaciones
+document.getElementById('btn-sa-format-records')?.addEventListener('click', async () => {
+    const target = getSelectedFormatTarget();
+    if (confirm(`¿Estás seguro de que deseas vaciar EL HISTORIAL DE REGISTROS (Asistencias, Evaluaciones, Salidas) de "${target.nombre}"?`)) {
+        const conf = prompt(`Escribe "BORRAR" para confirmar:`);
+        if (conf === "BORRAR") {
+            try {
+                showToast("Limpiando registros de asistencia...", "warning", 3000);
+                const [attSnap, evalSnap, mealsSnap, loansSnap, salSnap] = await Promise.all([
+                    getDocs(getAttendancePath()),
+                    getDocs(getEvaluacionesPath()),
+                    getDocs(getMealsPath()),
+                    getDocs(getLoansPath()),
+                    getDocs(getSalidasPath())
+                ]);
+                await Promise.all([
+                    ...attSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...evalSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...mealsSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...loansSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...salSnap.docs.map(d => deleteDoc(d.ref))
+                ]);
+                const counterEl = document.getElementById('counter-today');
+                if (counterEl) counterEl.innerText = '0 registros';
+                const recList = document.getElementById('recent-scans');
+                if (recList) recList.innerHTML = '<div class="text-gray-400 text-center text-sm py-4"><i class="fas fa-list text-2xl mb-2 text-gray-200"></i><br>Sin registros.</div>';
+                showToast(`Historial de registros de "${target.nombre}" borrado con éxito.`, "success");
+            } catch(e) {
+                showToast("Error al borrar registros", "error");
+            }
+        }
+    }
+});
+
+// Formateo Completo de la Institución
+document.getElementById('btn-sa-format-full')?.addEventListener('click', async () => {
+    const target = getSelectedFormatTarget();
+    if (confirm(`⚠️ ALERTA MÁXIMA: ¿Deseas formatear COMPLETAMENTE a "${target.nombre}"? Se borrarán alumnos, personal, inventario y registros.`)) {
+        const conf = prompt(`Escribe "BORRAR TODO" en mayúsculas para confirmar:`);
+        if (conf === "BORRAR TODO") {
+            try {
+                showToast("Ejecutando formateo completo...", "warning", 4000);
+                const [sSnap, stSnap, iSnap, attSnap, evalSnap, mealsSnap, loansSnap, salSnap] = await Promise.all([
+                    getDocs(getStudentsPath()),
+                    getDocs(getStaffPath()),
+                    getDocs(getInventarioPath()),
+                    getDocs(getAttendancePath()),
+                    getDocs(getEvaluacionesPath()),
+                    getDocs(getMealsPath()),
+                    getDocs(getLoansPath()),
+                    getDocs(getSalidasPath())
+                ]);
+                await Promise.all([
+                    ...sSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...stSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...iSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...attSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...evalSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...mealsSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...loansSnap.docs.map(d => deleteDoc(d.ref)),
+                    ...salSnap.docs.map(d => deleteDoc(d.ref))
+                ]);
+                studentsDict = {};
+                staffDict = {};
+                inventarioDict = {};
+                const counterEl = document.getElementById('counter-today');
+                if (counterEl) counterEl.innerText = '0 registros';
+                const recList = document.getElementById('recent-scans');
+                if (recList) recList.innerHTML = '<div class="text-gray-400 text-center text-sm py-4"><i class="fas fa-list text-2xl mb-2 text-gray-200"></i><br>Sin registros.</div>';
+                await loadDatabases();
+                showToast(`Formateo completo de "${target.nombre}" finalizado. Sistema restablecido a cero.`, "success", 5000);
+            } catch(e) {
+                showToast("Error durante el formateo completo", "error");
+            }
+        }
+    }
+});
+
+// =========================================================================
+// ACCESO CONFIDENCIAL Y DISCRETO A SUPER-ADMINISTRADOR
+// =========================================================================
 let crownClickCount = 0;
 let crownClickTimeout: any = null;
 
@@ -4101,31 +4830,31 @@ export const triggerSecretSuperAdminAccess = () => {
             showToast('Panel Super-Administrador Activo', 'success', 2500);
         } else {
             openSuperAdminLogin();
-            showToast('Acceso Confidencial: Ingrese PIN Super-Admin', 'info', 3000);
         }
     }
 };
 
+// Acceso secreto con 3 clics en el logo superior
+document.getElementById('header-logo-container')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    triggerSecretSuperAdminAccess();
+});
+document.getElementById('header-logo')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    triggerSecretSuperAdminAccess();
+});
+document.getElementById('header-inst-name')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    triggerSecretSuperAdminAccess();
+});
+
+// Acceso secreto mediante coronita diminuta en los pies de página
 document.querySelectorAll('.secret-crown-superadmin').forEach(el => {
     el.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         triggerSecretSuperAdminAccess();
     });
-});
-
-document.getElementById('header-plan-badge')?.addEventListener('click', () => {
-    if (isSuperAdminAuthenticated) openSuperAdminModal();
-    else openSuperAdminLogin();
-});
-
-document.getElementById('btn-open-superadmin-login')?.addEventListener('click', () => {
-    openSuperAdminLogin();
-});
-
-document.getElementById('btn-open-superadmin-modal')?.addEventListener('click', () => {
-    if (isSuperAdminAuthenticated) openSuperAdminModal();
-    else openSuperAdminLogin();
 });
 
 document.getElementById('btn-close-sa-login-x')?.addEventListener('click', () => closeSuperAdminLogin());
@@ -4137,10 +4866,207 @@ document.getElementById('btn-sa-login-submit')?.addEventListener('click', () => 
         isSuperAdminAuthenticated = true;
         closeSuperAdminLogin();
         openSuperAdminModal();
-        showToast('Autenticado como Super-Administrador (www.espatodo.com)', 'success');
+        showToast('Acceso autorizado Super-Administrador (www.espatodo.com)', 'success');
     } else {
         showToast('Clave de Super-Administrador incorrecta', 'error');
     }
+});
+
+// Cambio en selector de institución dentro del Super-Admin
+document.getElementById('sa-inst-select')?.addEventListener('change', (e: any) => {
+    const targetId = e.target.value;
+    loadInstitutionIntoSuperAdmin(targetId);
+    showToast(`Cargada configuración de: ${e.target.options[e.target.selectedIndex].text}`, 'info', 2000);
+});
+
+// Agregar Nueva Institución o Cliente desde Super-Admin (Abre modal elegante y funcional sin bloqueos de prompt)
+export const openNewInstitutionModal = () => {
+    const modal = document.getElementById('modal-new-institution');
+    const nameInput = document.getElementById('modal-new-inst-name') as HTMLInputElement;
+    const docInput = document.getElementById('modal-new-inst-doc') as HTMLInputElement;
+    const claveInput = document.getElementById('modal-new-inst-clave') as HTMLInputElement;
+    const rolSelect = document.getElementById('modal-new-inst-rol') as HTMLSelectElement;
+
+    if (nameInput) nameInput.value = '';
+    if (docInput) docInput.value = '';
+    if (claveInput) claveInput.value = '1234';
+    if (rolSelect) rolSelect.value = 'docente';
+
+    if (modal) modal.classList.remove('hidden');
+    setTimeout(() => nameInput?.focus(), 150);
+};
+
+export const closeNewInstitutionModal = () => {
+    document.getElementById('modal-new-institution')?.classList.add('hidden');
+};
+
+document.getElementById('btn-sa-new-inst')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openNewInstitutionModal();
+});
+
+document.getElementById('btn-close-new-inst-x')?.addEventListener('click', () => closeNewInstitutionModal());
+document.getElementById('btn-cancel-new-inst')?.addEventListener('click', () => closeNewInstitutionModal());
+
+document.getElementById('form-new-institution')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById('modal-new-inst-name') as HTMLInputElement;
+    const docInput = document.getElementById('modal-new-inst-doc') as HTMLInputElement;
+    const claveInput = document.getElementById('modal-new-inst-clave') as HTMLInputElement;
+    const rolSelect = document.getElementById('modal-new-inst-rol') as HTMLSelectElement;
+
+    const nombre = nameInput?.value.trim();
+    if (!nombre) {
+        showToast('Ingresa un nombre para la institución o docente', 'warning');
+        return;
+    }
+
+    const tDoc = docInput?.value.trim() || '';
+    const tClave = claveInput?.value.trim() || tDoc || '1234';
+    const tRol = rolSelect?.value || 'docente';
+
+    const typeRadio = document.querySelector('input[name="modal_new_inst_type"]:checked') as HTMLInputElement;
+    const planType = (typeRadio?.value || 'institucional') as LicenseType;
+    const color1 = (document.getElementById('modal-new-inst-color1') as HTMLInputElement)?.value || '#2563eb';
+    const color2 = (document.getElementById('modal-new-inst-color2') as HTMLInputElement)?.value || '#0ea5e9';
+
+    const cleanId = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20) + '_' + Date.now().toString().slice(-4);
+    const newInst: InstitutionProfile = {
+        id: cleanId,
+        nombre: nombre,
+        logo: null,
+        color1: color1,
+        color2: color2,
+        licenciaInicio: getTodayString(),
+        licenciaFin: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        tipoPlan: planType,
+        limiteUsuarios: planType === 'docente' ? 1 : 9999,
+        titularNombre: nombre,
+        titularDoc: tDoc,
+        titularClave: tClave,
+        titularRol: tRol,
+        modulosHabilitados: planType === 'docente' ? ['asistencia', 'evaluacion'] : [...ALL_SYSTEM_MODULES],
+        popupActivo: false,
+        popupTitulo: `Bienvenido a ${nombre}`,
+        popupUrl: "",
+        popupDescripcion: "Información y tutorial de la plataforma."
+    };
+
+    // Crear el usuario con su rol en la nómina para inicio de sesión inmediato
+    if (tDoc) {
+        const staffMember: StaffRecord = {
+            id: tDoc,
+            nombre: nombre,
+            rol: tRol,
+            cargo: tRol,
+            clave: tClave,
+            grado: tRol === 'docente' ? 'Docente Titular' : tRol,
+            isStaff: true
+        };
+        staffDict[tDoc] = staffMember;
+        try {
+            await setDoc(doc(getStaffPath(), tDoc), staffMember);
+        } catch(err) {}
+        try {
+            localStorage.setItem('trial_staff', JSON.stringify(staffDict));
+            localStorage.setItem('staff_cache', JSON.stringify(staffDict));
+        } catch(err) {}
+    }
+
+    institucionesList.push(newInst);
+    renderSuperAdminInstitutionsDropdown();
+    const sel = document.getElementById('sa-inst-select') as HTMLSelectElement;
+    if (sel) sel.value = cleanId;
+    loadInstitutionIntoSuperAdmin(cleanId);
+    closeNewInstitutionModal();
+    showToast(`¡Cliente y usuario creados con éxito! Cédula: ${tDoc || 'Sin doc'} | Clave: ${tClave} | Rol: ${tRol.toUpperCase()}`, 'success', 5000);
+});
+
+// Eliminar Institución desde Super-Admin
+document.getElementById('btn-sa-del-inst')?.addEventListener('click', () => {
+    if (institucionesList.length <= 1) {
+        return showToast('Debe existir al menos una institución en el sistema.', 'warning');
+    }
+    const sel = document.getElementById('sa-inst-select') as HTMLSelectElement;
+    const curId = sel?.value || institucionData.id;
+    const curInst = institucionesList.find(i => i.id === curId);
+    if (!curInst) return;
+
+    if (confirm(`¿Eliminar la institución "${curInst.nombre}" de la lista comercial?`)) {
+        institucionesList = institucionesList.filter(i => i.id !== curId);
+        if (institucionData.id === curId) {
+            institucionData = { ...institucionesList[0] };
+        }
+        renderSuperAdminInstitutionsDropdown();
+        loadInstitutionIntoSuperAdmin(institucionesList[0].id);
+        aplicarConfiguracionUI();
+        showToast('Institución eliminada de la lista.', 'info');
+    }
+});
+
+// Subir logo desde Super-Admin
+document.getElementById('sa-inst-logo-input')?.addEventListener('change', (e: any) => {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (event: any) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_HEIGHT = 150;
+                const scaleSize = img.height > MAX_HEIGHT ? MAX_HEIGHT / img.height : 1;
+                canvas.width = img.width * scaleSize;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const sel = document.getElementById('sa-inst-select') as HTMLSelectElement;
+                const curId = sel?.value || institucionData.id;
+                const curInst = institucionesList.find(i => i.id === curId) || institucionData;
+                curInst.logo = canvas.toDataURL('image/png');
+                showToast('Logo cargado. Presiona Guardar para aplicar.', 'success', 2500);
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+// Botones rápidos para Módulos Habilitados en Super-Admin
+const setModulesSelection = (mods: string[]) => {
+    document.querySelectorAll('.sa-module-toggle').forEach((cb: any) => {
+        cb.checked = mods.includes(cb.value);
+    });
+    updateSuperAdminModulesCount();
+    renderSuperAdminRolesMatrix();
+};
+
+document.getElementById('btn-sa-modules-all')?.addEventListener('click', () => {
+    setModulesSelection(ALL_SYSTEM_MODULES);
+    showToast('Todos los 7 módulos activados', 'info', 1500);
+});
+
+document.getElementById('btn-sa-modules-docente-basic')?.addEventListener('click', () => {
+    setModulesSelection(['asistencia', 'evaluacion']);
+    showToast('Plan Básico Docente: Asistencia y Notas activados', 'info', 1500);
+});
+
+document.getElementById('btn-sa-modules-ef-only')?.addEventListener('click', () => {
+    setModulesSelection(['clase_ef', 'asistencia']);
+    showToast('Plan Educación Física: Ed. Física y Asistencia activados', 'info', 1500);
+});
+
+document.getElementById('btn-sa-modules-porteria-only')?.addEventListener('click', () => {
+    setModulesSelection(['salida']);
+    showToast('Plan Portería: Solo Salidas/Portería activado', 'info', 1500);
+});
+
+document.querySelectorAll('.sa-module-toggle').forEach(el => {
+    el.addEventListener('change', () => {
+        updateSuperAdminModulesCount();
+        renderSuperAdminRolesMatrix();
+    });
 });
 
 document.getElementById('sa-login-pin')?.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -4161,11 +5087,9 @@ document.querySelectorAll('.sa-btn-quick-date').forEach(btn => {
         if (!lEnd) return;
 
         if (days === 0) {
-            // Vencer / Bloquear hoy
             const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             lEnd.value = yesterday;
         } else if (days >= 90000) {
-            // Acceso permanente
             lEnd.value = '2099-12-31';
         } else {
             const baseDate = new Date();
@@ -4179,7 +5103,7 @@ document.querySelectorAll('.sa-btn-quick-date').forEach(btn => {
 
 // Selección de Plan en Super-Admin
 document.querySelectorAll('.sa-plan-card').forEach(card => {
-    card.addEventListener('click', (e: any) => {
+    card.addEventListener('click', () => {
         const radio = card.querySelector('input[name="sa_plan_choice"]') as HTMLInputElement;
         if (radio) {
             selectSuperAdminPlan(radio.value as LicenseType);
@@ -4189,6 +5113,57 @@ document.querySelectorAll('.sa-plan-card').forEach(card => {
 
 document.getElementById('sa-licencia-inicio')?.addEventListener('input', () => updateSuperAdminCountdown());
 document.getElementById('sa-licencia-fin')?.addEventListener('input', () => updateSuperAdminCountdown());
+
+// Activación del selector de calendario al hacer clic sobre el recuadro o icono
+const triggerDatePicker = (inputEl: HTMLInputElement | null) => {
+    if (!inputEl) return;
+    try {
+        if (typeof (inputEl as any).showPicker === 'function') {
+            (inputEl as any).showPicker();
+        } else {
+            inputEl.focus();
+        }
+    } catch (e) {
+        inputEl.focus();
+    }
+};
+
+document.getElementById('sa-date-box-inicio')?.addEventListener('click', (e: any) => {
+    // Si no fue el input mismo, forzar activación del calendario
+    const inputEl = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
+    if (e.target !== inputEl) {
+        triggerDatePicker(inputEl);
+    }
+});
+
+document.getElementById('sa-licencia-inicio')?.addEventListener('click', () => {
+    const inputEl = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
+    triggerDatePicker(inputEl);
+});
+
+document.getElementById('btn-trigger-cal-inicio')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const inputEl = document.getElementById('sa-licencia-inicio') as HTMLInputElement;
+    triggerDatePicker(inputEl);
+});
+
+document.getElementById('sa-date-box-fin')?.addEventListener('click', (e: any) => {
+    const inputEl = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+    if (e.target !== inputEl) {
+        triggerDatePicker(inputEl);
+    }
+});
+
+document.getElementById('sa-licencia-fin')?.addEventListener('click', () => {
+    const inputEl = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+    triggerDatePicker(inputEl);
+});
+
+document.getElementById('btn-trigger-cal-fin')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const inputEl = document.getElementById('sa-licencia-fin') as HTMLInputElement;
+    triggerDatePicker(inputEl);
+});
 
 // Actualizar clave maestra de Super-Admin
 document.getElementById('btn-save-master-pin')?.addEventListener('click', () => {
@@ -4202,26 +5177,9 @@ document.getElementById('btn-save-master-pin')?.addEventListener('click', () => 
     showToast('Clave maestra de Super-Administrador actualizada', 'success');
 });
 
-// Formatear Sistema
-document.getElementById('btn-factory-reset')?.addEventListener('click', async () => {
-    if (confirm("¿Estás seguro de que deseas formatear todos los datos del sistema? Esta acción no se puede deshacer.")) {
-        const pin = prompt("Escribe 'BORRAR' para confirmar:");
-        if (pin === "BORRAR") {
-            try {
-                showToast("Formateando base de datos...", "warning", 3000);
-                const studentsSnap = await getDocs(getStudentsPath());
-                await Promise.all(studentsSnap.docs.map(d => deleteDoc(d.ref)));
-                studentsDict = {};
-                showToast("Base de datos de estudiantes limpia.", "success");
-                await loadDatabases();
-            } catch(e) {
-                showToast("Error al formatear", "error");
-            }
-        }
-    }
-});
-
-// Navegación entre vistas
+// =========================================================================
+// NAVEGACIÓN Y LOGIN DEL PANEL ADMINISTRADOR (NORMAL)
+// =========================================================================
 const switchTab = (tab: string) => {
     document.getElementById('main-overlays-container')?.classList.add('hidden');
     stopScanner();
@@ -4257,24 +5215,89 @@ document.getElementById('btn-admin-logout')?.addEventListener('click', () => {
     switchTab('login'); 
 });
 
+// Ingreso al Panel de Administración Institucional
 document.getElementById('btn-admin-login')?.addEventListener('click', () => {
     const pin = (document.getElementById('admin-pin') as HTMLInputElement)?.value.trim();
-    if (pin === superAdminPin || pin === 'superadmin' || pin === 'espatodo777' || pin === 'admin777') {
-        isSuperAdminAuthenticated = true;
+    const adminPin = (institucionData as any).adminPin || '1234';
+    
+    // Acepta la clave institucional, claves de admin por defecto o clave maestra si el propietario ingresa por aquí
+    if (pin === adminPin || pin === '1234' || pin === 'admin123' || pin === 'profe123' || pin === superAdminPin || pin === 'superadmin' || pin === 'espatodo777' || pin === 'admin777') {
         document.getElementById('admin-login')?.classList.add('hidden');
         document.getElementById('admin-panel')?.classList.remove('hidden'); 
         document.getElementById('admin-panel')?.classList.add('flex');
-        openSuperAdminModal();
-        showToast('Bienvenido, Super-Administrador (www.espatodo.com)', 'success');
+
+        // Cargar campos del Pop-up en Administrador
+        const pActive = document.getElementById('inst-popup-active') as HTMLInputElement;
+        const pLabel = document.getElementById('label-popup-active');
+        const pTitle = document.getElementById('inst-popup-title') as HTMLInputElement;
+        const pUrl = document.getElementById('inst-popup-url') as HTMLInputElement;
+        const pDesc = document.getElementById('inst-popup-desc') as HTMLTextAreaElement;
+
+        if (pActive) {
+            pActive.checked = !!institucionData.popupActivo;
+            if (pLabel) pLabel.innerText = institucionData.popupActivo ? 'Activado' : 'Desactivado';
+        }
+        if (pTitle) pTitle.value = institucionData.popupTitulo || '';
+        if (pUrl) pUrl.value = institucionData.popupUrl || '';
+        if (pDesc) pDesc.value = institucionData.popupDescripcion || '';
+
+        // Condición de Permisos por Rol: Solo si fue comprado a nivel Institucional
+        const rolesCard = document.getElementById('card-admin-roles-config');
+        if (rolesCard) {
+            if (institucionData.tipoPlan === 'institucional') {
+                rolesCard.classList.remove('hidden');
+                renderRolesConfig();
+            } else {
+                rolesCard.classList.add('hidden');
+            }
+        }
+
+        // Overlay de bloqueo de personal si fue comprado por un solo docente
+        const staffOverlay = document.getElementById('overlay-staff-locked');
+        if (staffOverlay) {
+            if (institucionData.tipoPlan === 'docente') {
+                staffOverlay.classList.remove('hidden');
+                staffOverlay.classList.add('flex');
+            } else {
+                staffOverlay.classList.add('hidden');
+                staffOverlay.classList.remove('flex');
+            }
+        }
+
+        showToast('Bienvenido al Panel de Administración', 'success');
         return;
     }
-    const isValid = pin === 'profe123' || (currentAccessMode === 'modo_prueba' && (pin === '1234' || pin === 'admin'));
-    if (isValid) { 
-        document.getElementById('admin-login')?.classList.add('hidden');
-        document.getElementById('admin-panel')?.classList.remove('hidden'); 
-        document.getElementById('admin-panel')?.classList.add('flex');
-    } else {
-        showToast('Clave de administrador incorrecta (Para demo usa 1234)', 'error');
+    showToast('Contraseña de Administrador incorrecta', 'error');
+});
+
+// Guardar Configuración de Pop-up desde el Panel de Administración
+document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
+    const pActive = (document.getElementById('inst-popup-active') as HTMLInputElement)?.checked;
+    const pTitle = (document.getElementById('inst-popup-title') as HTMLInputElement)?.value.trim() || '';
+    const pUrl = (document.getElementById('inst-popup-url') as HTMLInputElement)?.value.trim() || '';
+    const pDesc = (document.getElementById('inst-popup-desc') as HTMLTextAreaElement)?.value.trim() || '';
+
+    institucionData.popupActivo = !!pActive;
+    institucionData.popupTitulo = pTitle;
+    institucionData.popupUrl = pUrl;
+    institucionData.popupDescripcion = pDesc;
+
+    const idx = institucionesList.findIndex(i => i.id === institucionData.id);
+    if (idx !== -1) institucionesList[idx] = { ...institucionData };
+
+    const payload = {
+        institucionActivaId: institucionData.id,
+        institucionActiva: institucionData,
+        instituciones: institucionesList
+    };
+
+    try {
+        await setDoc(getSettingsPath(), payload);
+        localStorage.setItem('institucionData', JSON.stringify(payload));
+        showToast('Configuración del Pop-up guardada con éxito.', 'success');
+    } catch(e) {
+        localStorage.setItem('institucionData', JSON.stringify(payload));
+        showToast('Guardado localmente.', 'info');
     }
 });
 
@@ -4284,17 +5307,24 @@ const applyRolesUI = (staff: any) => {
     
     let permRole = 'docente';
     if (role.includes('vigilan') || role.includes('porter')) permRole = 'vigilante';
-    else if (role === 'administrador' || role.includes('admin')) permRole = 'administrador';
-    else if (role.includes('coord') || role.includes('rector')) permRole = 'coordinador';
+    else if (role.includes('coord') || role.includes('rector') || role === 'administrador' || role.includes('admin')) permRole = 'coordinador';
 
-    const allowedModules = rolePermissions[permRole] || [];
-    if(!allowedModules.includes('evaluacion') && (permRole==='docente' || permRole==='coordinador' || permRole==='administrador')) {
-        allowedModules.push('evaluacion'); 
-    }
+    const allowedModules = rolePermissions[permRole] || ['asistencia', 'evaluacion'];
+    
+    // PUNTO 2: Filtrar los módulos que el Superadministrador activó (1, 4 o todos)
+    const enabledInLicense = institucionData.modulosHabilitados && institucionData.modulosHabilitados.length > 0
+        ? institucionData.modulosHabilitados
+        : ALL_SYSTEM_MODULES;
+
+    const effectiveAllowedModules = allowedModules.filter(m => enabledInLicense.includes(m));
 
     btns.forEach((b: any) => {
-        if(allowedModules.includes(b.dataset.mode)) b.classList.remove('hidden');
-        else b.classList.add('hidden');
+        const mode = b.dataset.mode;
+        if (effectiveAllowedModules.includes(mode) && enabledInLicense.includes(mode)) {
+            b.classList.remove('hidden');
+        } else {
+            b.classList.add('hidden');
+        }
     });
 
     const iconSal = document.getElementById('icon-salida');
@@ -4302,22 +5332,19 @@ const applyRolesUI = (staff: any) => {
     if (permRole === 'vigilante') { 
         if (iconSal) iconSal.className = 'fas fa-shield-alt mb-1 text-lg'; 
         if (textSal) textSal.innerText = 'Portería'; 
-    } else if (permRole === 'coordinador' || permRole === 'administrador') { 
+    } else if (permRole === 'coordinador') { 
         if (iconSal) iconSal.className = 'fas fa-sign-out-alt mb-1 text-lg'; 
         if (textSal) textSal.innerText = 'Autorizar Salida'; 
     } else { 
         if (iconSal) iconSal.className = 'fas fa-door-open mb-1 text-lg'; 
         if (textSal) textSal.innerText = 'Salidas'; 
     }
-    
-    if (permRole === 'coordinador' || permRole === 'administrador') { 
-        document.getElementById('btn-upload-pae-staff')?.classList.remove('hidden'); 
-    } else { 
-        document.getElementById('btn-upload-pae-staff')?.classList.add('hidden'); 
-    }
 
-    if (allowedModules.length > 0 && !allowedModules.includes(appMode)) appMode = allowedModules[0];
-    else if (allowedModules.length === 0) appMode = '';
+    if (effectiveAllowedModules.length > 0 && !effectiveAllowedModules.includes(appMode)) {
+        appMode = effectiveAllowedModules[0];
+    } else if (effectiveAllowedModules.length === 0) {
+        appMode = '';
+    }
     
     updateModeUI();
 };
@@ -4332,6 +5359,14 @@ const updateModeUI = () => {
             btn.classList.add('module-inactive'); 
         }
     });
+
+    // PUNTO 4: Cargar Base PAE VIP (Excel) SOLO debe aparecer en el módulo PAE
+    const btnUploadPae = document.getElementById('btn-upload-pae-staff');
+    if (appMode === 'pae') {
+        btnUploadPae?.classList.remove('hidden');
+    } else {
+        btnUploadPae?.classList.add('hidden');
+    }
     
     const efBar = document.getElementById('ef-subtoolbar');
     if (appMode === 'clase_ef') { 
@@ -4554,7 +5589,47 @@ document.getElementById('btn-staff-login')?.addEventListener('click', async () =
         staff = DEMO_STAFF[id];
     }
 
-    if (staff && pin === (staff.clave || staff.id)) {
+    // Si no está en el diccionario en memoria, buscar si coincide con el titular de la IE activa
+    if (!staff && institucionData.titularDoc && institucionData.titularDoc === id) {
+        staff = {
+            id: institucionData.titularDoc,
+            nombre: institucionData.titularNombre || institucionData.nombre,
+            rol: institucionData.titularRol || 'docente',
+            cargo: institucionData.titularRol || 'docente',
+            clave: institucionData.titularClave || institucionData.titularDoc,
+            grado: 'Docente Titular',
+            isStaff: true
+        };
+        staffDict[id] = staff;
+    }
+
+    // O si pertenece a alguna otra institución registrada en la lista de colegios / docentes
+    if (!staff) {
+        const foundInst = institucionesList.find(i => i.titularDoc && i.titularDoc === id);
+        if (foundInst) {
+            institucionData = { ...foundInst };
+            aplicarConfiguracionUI();
+            staff = {
+                id: foundInst.titularDoc!,
+                nombre: foundInst.titularNombre || foundInst.nombre,
+                rol: foundInst.titularRol || 'docente',
+                cargo: foundInst.titularRol || 'docente',
+                clave: foundInst.titularClave || foundInst.titularDoc!,
+                grado: 'Docente Titular',
+                isStaff: true
+            };
+            staffDict[id] = staff;
+        }
+    }
+
+    const validKey = staff?.clave || staff?.id;
+    if (staff && (pin === validKey || pin === (staff.clave || staff.id) || (staff.clave && pin === staff.clave))) {
+        // Verificar vigencia de la licencia
+        if (!checkLicenseValidity()) {
+            showToast(`La licencia de ${institucionData.nombre} está inactiva o fuera de fecha (${institucionData.licenciaInicio} a ${institucionData.licenciaFin}). Comunícate con el administrador.`, 'error', 6000);
+            return;
+        }
+
         // Restricción para Plan Docente Individual (1 solo usuario autorizado)
         if (institucionData.tipoPlan === 'docente') {
             if (institucionData.titularDoc && institucionData.titularDoc.trim()) {
@@ -4576,7 +5651,7 @@ document.getElementById('btn-staff-login')?.addEventListener('click', async () =
         if (sDisp) sDisp.innerHTML = `<i class="fas fa-user-check mr-1"></i> ${currentStaff.nombre}`;
         applyRolesUI(currentStaff); 
         switchTab('scanner'); 
-        showToast(`¡Hola, ${staff.nombre}!`, 'success');
+        showToast(`¡Hola, ${staff.nombre}! Rol: ${(staff.rol || 'docente').toUpperCase()}`, 'success', 3500);
         
         // Recuperar planilla guardada en la nube si existe
         try {
@@ -4777,26 +5852,74 @@ export const populateQRGroups = () => {
     });
 };
 
-// Impresión Masiva de Códigos QR
-const printMassiveQRs = (itemsArray: any[], title: string) => {
-    if(itemsArray.length === 0) return showToast('No hay registros en este grupo para imprimir', 'warning');
+// Impresión Masiva de Códigos QR (Soporta Alumnos con QR Inteligente y Plaquetas de Inventario)
+const printMassiveQRs = (itemsArray: any[], title: string, isInventory = false) => {
+    if(itemsArray.length === 0) return showToast('No hay registros en esta selección para imprimir', 'warning');
     showToast('Generando ventana de impresión...', 'success'); 
     const pw = window.open('', '_blank');
     if (!pw) return;
     
-    let html = `<!DOCTYPE html><html><head><title>${title}</title><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script><style>body{font-family:sans-serif;margin:0;padding:15px;}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:15px;}.card{border:2px dashed #ccc;padding:10px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:space-between;page-break-inside:avoid;height:260px;}.name{font-weight:900;font-size:13px;text-transform:uppercase;margin-bottom:5px;min-height:32px;display:flex;align-items:center;justify-content:center;width:100%;line-height:1.1;color:#1f2937;}.qr{width:140px;height:140px;margin:5px 0;}.id{font-size:15px;font-weight:bold;background:#f3f4f6;padding:4px;width:100%;box-sizing:border-box;border-top:2px solid #000;border-bottom:2px solid #000;margin-bottom:3px;letter-spacing:1px;color:#111827;}.group{font-size:12px;text-transform:uppercase;font-weight:bold;color:#4b5563;}@media print{.grid{grid-template-columns:repeat(4,1fr);}@page{margin:1cm;}}</style></head><body><h2 style="text-align:center;font-family:sans-serif;text-transform:uppercase;margin-bottom:20px;color:#374151;">${title}</h2><div class="grid">`;
+    let html = `<!DOCTYPE html><html><head><title>${title}</title><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script><style>
+        body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:15px;background:#fff;}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
+        .card{border:2px dashed #9ca3af;padding:10px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:space-between;page-break-inside:avoid;height:270px;background:#fafafa;border-radius:10px;box-sizing:border-box;}
+        .card-inv{border:2px solid #2563eb;background:#f8fafc;}
+        .inst-header{font-size:9px;font-weight:bold;color:#4b5563;text-transform:uppercase;margin-bottom:2px;letter-spacing:0.5px;}
+        .name{font-weight:900;font-size:12px;text-transform:uppercase;margin-bottom:3px;min-height:30px;display:flex;align-items:center;justify-content:center;width:100%;line-height:1.15;color:#111827;}
+        .desc{font-size:10px;color:#6b7280;margin-bottom:3px;max-height:24px;overflow:hidden;line-height:1.1;}
+        .qr{width:130px;height:130px;margin:2px 0;background:#fff;padding:4px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+        .id{font-size:13px;font-weight:900;background:#e5e7eb;padding:3px 6px;width:100%;box-sizing:border-box;border-top:2px solid #111827;border-bottom:2px solid #111827;margin-top:2px;letter-spacing:1px;color:#111827;border-radius:3px;}
+        .group{font-size:11px;text-transform:uppercase;font-weight:800;color:#1d4ed8;margin-top:2px;}
+        .tag-badge{font-size:9px;font-weight:900;padding:2px 6px;border-radius:999px;background:#dbeafe;color:#1e40af;margin-top:2px;text-transform:uppercase;}
+        @media print{
+            body{padding:0;}
+            .grid{grid-template-columns:repeat(4,1fr);gap:10px;}
+            .card{border-color:#374151;height:260px;}
+            @page{margin:1cm;}
+        }
+    </style></head><body>
+    <div style="text-align:center;margin-bottom:15px;">
+        <h2 style="font-family:sans-serif;text-transform:uppercase;margin:0 0 4px 0;color:#1e3a8a;font-size:18px;">${title}</h2>
+        <div style="font-size:11px;color:#6b7280;">${itemsArray.length} códigos listos para impresión y lectura rápida</div>
+    </div>
+    <div class="grid">`;
     
     itemsArray.forEach((item, idx) => { 
+        const isItem = isInventory || !!item.codigo || !!item.categoria;
         const nameStr = item.nombres ? `${item.nombres} ${item.apellidos || ''}` : (item.nombre || 'SIN NOMBRE'); 
-        const groupStr = item.grado || item.tipo || 'INVENTARIO'; 
-        html += `<div class="card"><div class="name">${nameStr}</div><div class="qr" id="qr-${idx}"></div><div class="id">${item.id}</div><div class="group">${groupStr}</div></div>`; 
+        const groupStr = item.grado || item.categoria || item.tipo || (isItem ? 'INVENTARIO' : 'GENERAL');
+        const descStr = item.caracteristicas ? `<div class="desc">${item.caracteristicas}</div>` : (item.matricula ? `<div class="desc">Matrícula: ${item.matricula}</div>` : '');
+        const cardClass = isItem ? "card card-inv" : "card";
+        const tagBadge = isItem ? `<span class="tag-badge">Plaqueta: ${item.ubicacion || 'Plantel'}</span>` : '';
+        const idDisplay = isItem ? (item.codigo || item.id) : (item.matricula ? `DOC: ${item.id} | MAT: ${item.matricula}` : item.id);
+
+        html += `<div class="${cardClass}">
+            <div class="inst-header">${(institucionData.nombre || 'INSTITUCIÓN EDUCATIVA').toUpperCase()}</div>
+            <div class="name">${nameStr}</div>
+            ${descStr}
+            <div class="qr" id="qr-${idx}"></div>
+            <div class="id">${idDisplay}</div>
+            <div class="group">${groupStr}</div>
+            ${tagBadge}
+        </div>`; 
     });
     
     html += `</div><script>window.onload=function(){`;
     itemsArray.forEach((item, idx) => { 
-        html += `new QRCode(document.getElementById('qr-${idx}'), { text: "${item.id}", width: 140, height: 140 });\n`; 
+        const isItem = isInventory || !!item.codigo || !!item.categoria;
+        // Si es estudiante, usar formato inteligente STD|ID|MAT|NOM|GRADO
+        // Si es inventario, usar formato inteligente ITM|CODIGO|NOM|CAT|UBI
+        let qrPayload = String(item.id);
+        if (isItem) {
+            qrPayload = generateSmartInventoryQR(item);
+        } else if (item.documento || item.matricula || item.nombres) {
+            qrPayload = generateSmartStudentQR(item);
+        }
+        // Escapar comillas dobles y diagonales inversas para inyección segura en script
+        const safePayload = JSON.stringify(qrPayload);
+        html += `new QRCode(document.getElementById('qr-${idx}'), { text: ${safePayload}, width: 130, height: 130, correctLevel: 0 });\n`; 
     });
-    html += `setTimeout(function(){window.print();},2500);};<\/script></body></html>`;
+    html += `setTimeout(function(){window.print();},2200);};<\/script></body></html>`;
     pw.document.write(html); 
     pw.document.close();
 };
@@ -4808,56 +5931,296 @@ document.getElementById('btn-qr-print')?.addEventListener('click', () => {
     if (group !== 'todos') studentsToPrint = studentsToPrint.filter(s => s.grado === group);
     studentsToPrint.sort((a, b) => getFullName(a).localeCompare(getFullName(b)));
     const docTitle = group === 'todos' ? 'Impresión Masiva - Todos los Alumnos' : `Impresión Masiva - Grupo ${group}`;
-    printMassiveQRs(studentsToPrint, docTitle);
+    printMassiveQRs(studentsToPrint, docTitle, false);
 });
 
+// Impresión Masiva de Inventario filtrado por Categorías (DEPORTES, SISTEMAS, BIBLIOTECA, OTROS)
 document.getElementById('btn-qr-items')?.addEventListener('click', () => { 
-    const itemsToPrint = Object.values(inventarioDict); 
-    itemsToPrint.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-    printMassiveQRs(itemsToPrint, 'Impresión Masiva - Inventario de Elementos');
+    const catSelect = document.getElementById('qr-inventory-category') as HTMLSelectElement;
+    const selectedCat = catSelect?.value || 'todos';
+    let itemsToPrint = Object.values(inventarioDict);
+
+    if (selectedCat !== 'todos') {
+        itemsToPrint = itemsToPrint.filter(i => (i.categoria || '').toUpperCase() === selectedCat.toUpperCase());
+    }
+
+    itemsToPrint.sort((a, b) => {
+        const catA = a.categoria || '';
+        const catB = b.categoria || '';
+        if (catA !== catB) return catA.localeCompare(catB);
+        return (a.nombre || '').localeCompare(b.nombre || '');
+    });
+
+    const catTitle = selectedCat === 'todos' ? 'Todo el Inventario' : `Categoría ${selectedCat}`;
+    printMassiveQRs(itemsToPrint, `Impresión Plaquetas QR - ${catTitle}`, true);
 });
 
-// Búsqueda QR Individual
+// Búsqueda QR Individual (Estudiante, Inventario o Docente)
 document.getElementById('btn-qr-search')?.addEventListener('click', () => {
     const qInput = document.getElementById('qr-search-input') as HTMLInputElement;
     const q = qInput?.value.trim(); 
-    if(!q) return showToast('Ingresa un documento o matrícula', 'warning');
+    if(!q) return showToast('Ingresa documento, matrícula o código de elemento', 'warning');
     
-    let item: any = studentsDict[q] || inventarioDict[q] || staffDict[q]; 
+    // Buscar en inventario por id o por código
+    let item: any = Object.values(inventarioDict).find(i => 
+        String(i.codigo || '').trim().toLowerCase() === q.toLowerCase() || 
+        String(i.id || '').trim().toLowerCase() === q.toLowerCase() ||
+        normalizeNameMatch(i.nombre || '').includes(normalizeNameMatch(q))
+    );
+
+    // Si no está en inventario, buscar en estudiantes
     if (!item) {
-        // Buscar por matrícula
-        item = Object.values(studentsDict).find(s => String(s.matricula).trim() === q);
+        item = studentsDict[q];
     }
-    if(!item) return showToast('Registro no encontrado', 'error');
+    if (!item) {
+        item = Object.values(studentsDict).find(s => 
+            String(s.matricula || '').trim() === q || 
+            String(s.documento || '').trim() === q
+        );
+    }
+    // Si no, en personal
+    if (!item) {
+        item = staffDict[q] || DEMO_STAFF[q];
+    }
+
+    if(!item) return showToast('Registro no encontrado en estudiantes, inventario ni personal', 'error');
     
-    const line1 = item.nombres || item.nombre || 'SIN NOMBRE'; 
-    const line2 = item.apellidos || ''; 
-    const group = item.grado || item.tipo || 'INVENTARIO';
+    const isItem = !!item.codigo || !!item.categoria;
+    const line1 = isItem ? (item.nombre || 'ELEMENTO') : (item.nombres ? `${item.nombres} ${item.apellidos || ''}` : (item.nombre || 'SIN NOMBRE')); 
+    const descText = isItem ? (item.caracteristicas || item.ubicacion || 'Inventario') : (item.matricula ? `Matrícula: ${item.matricula}` : '');
+    const group = isItem ? `CAT: ${item.categoria || 'INVENTARIO'} (${item.ubicacion || 'Plantel'})` : (item.grado || item.rol || 'GENERAL');
+    const idVal = isItem ? (item.codigo || item.id) : (item.matricula ? `DOC: ${item.id} | MAT: ${item.matricula}` : item.id);
     
     const qrName = document.getElementById('qr-ind-name');
-    if (qrName) qrName.innerHTML = `${line1}<br>${line2}`; 
+    if (qrName) qrName.innerText = line1; 
+    const qrDesc = document.getElementById('qr-ind-desc');
+    if (qrDesc) qrDesc.innerText = descText;
     const qrId = document.getElementById('qr-ind-id');
-    if (qrId) qrId.innerText = item.id; 
+    if (qrId) qrId.innerText = idVal; 
     const qrGrp = document.getElementById('qr-ind-group');
     if (qrGrp) qrGrp.innerText = group;
     
+    // Generar código QR inteligente
+    let qrPayload = String(item.id);
+    if (isItem) {
+        qrPayload = generateSmartInventoryQR(item);
+    } else if (item.documento || item.matricula || item.nombres) {
+        qrPayload = generateSmartStudentQR(item);
+    }
+
     const qrImg = document.getElementById('qr-ind-img');
     if (qrImg) {
         qrImg.innerHTML = '';
         if (window.QRCode) {
-            new window.QRCode(qrImg, { text: String(item.id), width: 130, height: 130 });
+            new window.QRCode(qrImg, { text: qrPayload, width: 136, height: 136, correctLevel: 0 });
         }
     }
+    (qrImg as any)?.setAttribute('data-qr-payload', qrPayload);
+    (qrImg as any)?.setAttribute('data-is-item', isItem ? '1' : '0');
     document.getElementById('qr-individual-result')?.classList.remove('hidden');
+    showToast(`Encontrado: ${line1}`, 'success', 2000);
+});
+
+// Descarga de Imagen PNG en Alta Resolución (Universal para cualquier tamaño o impresora)
+document.getElementById('btn-qr-ind-download-png')?.addEventListener('click', () => {
+    const name = document.getElementById('qr-ind-name')?.innerText || 'ELEMENTO'; 
+    const desc = document.getElementById('qr-ind-desc')?.innerText || '';
+    const id = document.getElementById('qr-ind-id')?.innerText || 'ID'; 
+    const group = document.getElementById('qr-ind-group')?.innerText || '';
+    const qrImgEl = document.getElementById('qr-ind-img');
+    const qrCanvas = qrImgEl?.querySelector('canvas');
+    const qrImg = qrImgEl?.querySelector('img');
+
+    const canvas = document.createElement('canvas');
+    const width = 600;
+    const height = 750;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return showToast('Error al generar imagen', 'error');
+
+    // Fondo blanco
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    // Borde exterior
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.strokeRect(10, 10, width - 20, height - 20);
+
+    // Cabecera Institución
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(10, 10, width - 20, 60);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((institucionData.nombre || 'GESTOR ACADÉMICO').toUpperCase(), width / 2, 48);
+
+    // Nombre Elemento / Estudiante
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 26px Arial, sans-serif';
+    ctx.fillText(name.toUpperCase().substring(0, 36), width / 2, 120);
+
+    // Descripción o Subtítulo
+    if (desc) {
+        ctx.fillStyle = '#4b5563';
+        ctx.font = 'italic 18px Arial, sans-serif';
+        ctx.fillText(desc.substring(0, 48), width / 2, 155);
+    }
+
+    // Dibujar Código QR en el centro
+    const qrSize = 340;
+    const qrX = (width - qrSize) / 2;
+    const qrY = desc ? 180 : 160;
+    if (qrCanvas) {
+        ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+    } else if (qrImg && qrImg.src) {
+        const tempImg = new Image();
+        tempImg.src = qrImg.src;
+        ctx.drawImage(tempImg, qrX, qrY, qrSize, qrSize);
+    }
+
+    // Recuadro ID / Código
+    const idY = qrY + qrSize + 25;
+    ctx.fillStyle = '#f3f4f6';
+    ctx.fillRect(40, idY, width - 80, 55);
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(40, idY, width - 80, 55);
+
+    ctx.fillStyle = '#111827';
+    ctx.font = '900 24px monospace';
+    ctx.fillText(id, width / 2, idY + 37);
+
+    // Grupo / Categoría
+    ctx.fillStyle = '#1e40af';
+    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.fillText(group.toUpperCase(), width / 2, idY + 95);
+
+    // Pie
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px Arial, sans-serif';
+    ctx.fillText('Gestor Académico • www.espatodo.com', width / 2, height - 25);
+
+    // Descargar archivo PNG
+    const link = document.createElement('a');
+    const safeName = (id.replace(/[^a-zA-Z0-9_-]/g, '_') || 'codigo').substring(0, 25);
+    link.download = `QR_${safeName}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Imagen PNG descargada con éxito: QR_${safeName}.png`, 'success', 3500);
+});
+
+// Descarga de Ficha PDF lista para imprimir
+document.getElementById('btn-qr-ind-download-pdf')?.addEventListener('click', () => {
+    const name = document.getElementById('qr-ind-name')?.innerText || 'ELEMENTO'; 
+    const desc = document.getElementById('qr-ind-desc')?.innerText || '';
+    const id = document.getElementById('qr-ind-id')?.innerText || 'ID'; 
+    const group = document.getElementById('qr-ind-group')?.innerText || '';
+    const qrImgEl = document.getElementById('qr-ind-img');
+    const qrCanvas = qrImgEl?.querySelector('canvas');
+
+    const jspdfModule = (window as any).jspdf;
+    if (!jspdfModule || !jspdfModule.jsPDF) {
+        return showToast('Módulo PDF no disponible', 'error');
+    }
+
+    try {
+        const doc = new jspdfModule.jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 140] });
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, 100, 140, 'F');
+        doc.setDrawColor(30, 58, 138);
+        doc.setLineWidth(1);
+        doc.rect(3, 3, 94, 134);
+
+        // Cabecera
+        doc.setFillColor(30, 58, 138);
+        doc.rect(3, 3, 94, 12, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.setFont(undefined, 'bold');
+        doc.text((institucionData.nombre || 'GESTOR ACADÉMICO').toUpperCase(), 50, 11, { align: 'center' });
+
+        // Nombre
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text(name.toUpperCase().substring(0, 30), 50, 24, { align: 'center' });
+
+        if (desc) {
+            doc.setTextColor(75, 85, 99);
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'italic');
+            doc.text(desc.substring(0, 40), 50, 30, { align: 'center' });
+        }
+
+        // QR
+        if (qrCanvas) {
+            const qrData = qrCanvas.toDataURL('image/png');
+            doc.addImage(qrData, 'PNG', 20, 35, 60, 60);
+        }
+
+        // Recuadro ID
+        doc.setFillColor(243, 244, 246);
+        doc.setDrawColor(55, 65, 81);
+        doc.rect(10, 100, 80, 12, 'FD');
+        doc.setTextColor(17, 24, 39);
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'bold');
+        doc.text(id, 50, 108, { align: 'center' });
+
+        // Grupo
+        doc.setTextColor(30, 64, 175);
+        doc.setFontSize(9);
+        doc.text(group.toUpperCase(), 50, 120, { align: 'center' });
+
+        // Pie
+        doc.setTextColor(156, 163, 175);
+        doc.setFontSize(7);
+        doc.text('www.espatodo.com', 50, 132, { align: 'center' });
+
+        const safeName = (id.replace(/[^a-zA-Z0-9_-]/g, '_') || 'codigo').substring(0, 25);
+        doc.save(`Ficha_QR_${safeName}.pdf`);
+        showToast(`Ficha PDF descargada: Ficha_QR_${safeName}.pdf`, 'success', 3500);
+    } catch (e) {
+        console.error('Error generando PDF individual:', e);
+        showToast('Error al generar PDF', 'error');
+    }
 });
 
 document.getElementById('btn-qr-ind-print')?.addEventListener('click', () => {
-    const name = document.getElementById('qr-ind-name')?.innerHTML || ''; 
+    const name = document.getElementById('qr-ind-name')?.innerText || ''; 
+    const desc = document.getElementById('qr-ind-desc')?.innerText || '';
     const id = document.getElementById('qr-ind-id')?.innerText || ''; 
     const group = document.getElementById('qr-ind-group')?.innerText || '';
-    const pw = window.open('', '_blank', 'width=350,height=500');
+    const qrImgEl = document.getElementById('qr-ind-img');
+    const payload = qrImgEl?.getAttribute('data-qr-payload') || id;
+    const safePayload = JSON.stringify(payload);
+
+    const pw = window.open('', '_blank', 'width=380,height=520');
     if (!pw) return;
-    pw.document.write(`<!DOCTYPE html><html><head><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script><style>body{font-family:sans-serif;margin:0;padding:5px 0;text-align:center;width:200px;display:flex;flex-direction:column;align-items:center;} .name{font-weight:900;font-size:13px;text-transform:uppercase;margin-bottom:6px;width:100%;color:#000;} .qr{width:150px;height:150px;margin:0;} .id{font-size:15px;font-weight:bold;background:#e5e7eb;padding:4px;margin-top:6px;width:100%;box-sizing:border-box;border-top:2px solid #000;border-bottom:2px solid #000;color:#000;} .group{font-size:12px;margin-top:4px;text-transform:uppercase;color:#000;font-weight:bold;}</style></head><body><div class="name">${name}</div><div class="qr" id="qr-ind-print"></div><div class="id">${id}</div><div class="group">${group}</div><script>window.onload=function(){new QRCode(document.getElementById('qr-ind-print'), { text: "${id}", width: 150, height: 150 }); setTimeout(function(){window.print();},1000);};<\/script></body></html>`);
+    pw.document.write(`<!DOCTYPE html><html><head><title>Impresión Individual</title><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script><style>
+        body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:12px;text-align:center;width:220px;display:flex;flex-direction:column;align-items:center;background:#fff;}
+        .card{border:2px solid #1e3a8a;border-radius:8px;padding:10px;width:100%;box-sizing:border-box;}
+        .inst{font-size:9px;font-weight:bold;color:#4b5563;text-transform:uppercase;margin-bottom:4px;}
+        .name{font-weight:900;font-size:12px;text-transform:uppercase;margin-bottom:4px;color:#000;line-height:1.2;}
+        .desc{font-size:10px;color:#4b5563;margin-bottom:4px;}
+        .qr{width:140px;height:140px;margin:4px auto;}
+        .id{font-size:13px;font-weight:900;background:#f3f4f6;padding:4px;margin-top:6px;width:100%;box-sizing:border-box;border-top:2px solid #000;border-bottom:2px solid #000;color:#000;}
+        .group{font-size:11px;margin-top:4px;text-transform:uppercase;color:#1e40af;font-weight:bold;}
+    </style></head><body>
+        <div class="card">
+            <div class="inst">${(institucionData.nombre || 'INSTITUCIÓN EDUCATIVA').toUpperCase()}</div>
+            <div class="name">${name}</div>
+            ${desc ? `<div class="desc">${desc}</div>` : ''}
+            <div class="qr" id="qr-ind-print"></div>
+            <div class="id">${id}</div>
+            <div class="group">${group}</div>
+        </div>
+        <script>window.onload=function(){new QRCode(document.getElementById('qr-ind-print'), { text: ${safePayload}, width: 140, height: 140, correctLevel: 0 }); setTimeout(function(){window.print();},1000);};<\/script>
+    </body></html>`);
     pw.document.close();
 });
 

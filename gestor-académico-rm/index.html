@@ -41,6 +41,18 @@
 
         .carnet-container { width: 320px; height: 520px; background: #ffffff; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; border: 1px solid #e5e7eb; margin: 0 auto; }
         .carnet-waves { position: absolute; top: 0; left: 0; width: 100%; height: 120px; z-index: 0; }
+        
+        /* Selector de fecha con activación de calendario al hacer clic en cualquier parte del recuadro */
+        input[type="date"].sa-date-calendar-input {
+            color-scheme: dark;
+            cursor: pointer;
+        }
+        input[type="date"].sa-date-calendar-input::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            filter: invert(0.85);
+            font-size: 1.15rem;
+            padding: 4px;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden relative">
@@ -631,22 +643,24 @@
         </div>
 
         <div id="view-admin" class="p-4 hidden flex-col gap-4 h-full relative">
-            <div id="admin-login" class="bg-white rounded-xl shadow-sm p-6 flex flex-col items-center justify-center h-full border-t-4 border-gray-800">
-                <i class="fas fa-shield-alt text-5xl text-gray-800 mb-4"></i>
-                <h2 class="text-xl font-bold mb-2">Administración Global</h2>
-                <input type="password" id="admin-pin" placeholder="Contraseña" class="border border-gray-300 rounded-lg px-4 py-3 text-center text-xl w-full max-w-xs mb-4 focus:outline-none focus:border-gray-800">
-                <button id="btn-admin-login" class="bg-gray-800 text-white px-6 py-3 rounded-lg font-bold w-full max-w-xs hover:bg-gray-900 shadow-md">Ingresar</button>
-                <button id="btn-back-from-login" class="mt-4 text-gray-500 text-sm font-bold hover:text-gray-700"><i class="fas fa-arrow-left mr-2"></i>Volver al Escáner</button>
-                
-                <!-- Acceso Super-Administrador Comercial -->
-                <div class="mt-4 pt-4 border-t border-gray-100 w-full max-w-xs flex flex-col items-center">
-                    <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Acceso Exclusivo Proveedor</span>
-                    <button type="button" id="btn-open-superadmin-login" class="w-full bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950 hover:from-black hover:to-gray-900 text-amber-400 border border-amber-500/40 px-4 py-2.5 rounded-xl font-black text-xs shadow flex items-center justify-center gap-2 transition-all">
-                        <i class="fas fa-crown text-amber-400"></i> Acceso Super-Administrador
-                    </button>
+            <div id="admin-login" class="bg-white rounded-2xl shadow-xl p-6 sm:p-8 flex flex-col items-center justify-center h-full border-t-4 border-gray-800 max-w-sm mx-auto my-auto text-center">
+                <div class="w-16 h-16 rounded-2xl bg-gray-100 text-gray-800 flex items-center justify-center text-3xl shadow-inner border border-gray-200 mb-4">
+                    <i class="fas fa-shield-alt"></i>
                 </div>
+                <h2 class="text-xl font-black text-gray-900 mb-1 tracking-tight uppercase">Administración</h2>
+                <p class="text-xs text-gray-500 mb-5 font-medium">Configuración de marca, pop-up tutorial, bases de datos y códigos QR.</p>
+                <div class="w-full relative mb-3">
+                    <i class="fas fa-lock absolute left-3 top-3.5 text-gray-400 text-sm"></i>
+                    <input type="password" id="admin-pin" placeholder="Contraseña de Administrador" class="border-2 border-gray-300 rounded-xl pl-9 pr-3 py-3 text-center text-base w-full font-bold focus:outline-none focus:border-gray-800 bg-gray-50/60">
+                </div>
+                <button id="btn-admin-login" class="bg-gray-800 hover:bg-black text-white px-6 py-3.5 rounded-xl font-black w-full shadow-md text-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fas fa-sign-in-alt"></i> Ingresar a Administración
+                </button>
+                <button id="btn-back-from-login" class="mt-4 text-gray-500 text-xs font-bold hover:text-gray-800 transition-colors flex items-center gap-1.5">
+                    <i class="fas fa-arrow-left"></i> Volver al Escáner
+                </button>
 
-                <div class="mt-5 text-center text-xs text-gray-400 font-medium">
+                <div class="mt-6 pt-4 border-t border-gray-100 w-full text-center text-[11px] text-gray-400 font-medium">
                     Desarrollado por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-bold underline">"www.espatodo.com"</a>
                 </div>
             </div>
@@ -659,160 +673,78 @@
                         <i class="fas fa-arrow-left text-yellow-400"></i> Volver al Escáner
                     </button>
                     <span class="text-xs font-black text-gray-800 uppercase tracking-wide flex items-center gap-1.5">
-                        <i class="fas fa-cog text-blue-600"></i> Administración
+                        <i class="fas fa-cog text-blue-600"></i> Configuración de la Institución
                     </span>
                 </div>
-
-                <!-- BARRA SUPER-ADMIN DE ESTADO DE PLAN Y LICENCIA (Alto Contraste Garantizado) -->
-                <div id="superadmin-quick-bar" style="background-color: #0f172a; color: #ffffff; border: 2px solid #d97706;" class="p-3.5 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center gap-2.5">
-                        <div style="background-color: rgba(217, 119, 6, 0.25); border: 1px solid #d97706;" class="w-9 h-9 rounded-xl flex items-center justify-center text-amber-400 text-lg shadow">
-                            <i class="fas fa-crown text-yellow-400"></i>
-                        </div>
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" style="color: #fbbf24;">
-                                <span>Super-Administrador</span> &bull; <span id="quick-bar-titular" style="color: #f1f5f9; font-weight: 700;">I.E. Ramón Múnera Lopera</span>
-                            </div>
-                            <div class="text-xs font-black flex items-center gap-2" style="color: #ffffff;">
-                                <span style="color: #cbd5e1;">Plan:</span>
-                                <span id="quick-bar-plan-name" style="color: #fbbf24;" class="font-black uppercase tracking-wide">Institucional</span>
-                                <span id="quick-bar-plan-limit" style="background-color: #1e3a8a; color: #bfdbfe; border: 1px solid #3b82f6;" class="text-[10px] px-2 py-0.5 rounded font-bold">Multi-Usuario</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span id="quick-bar-days-left" style="background-color: #064e3b; color: #6ee7b7; border: 1px solid #059669;" class="text-xs font-bold px-2.5 py-1 rounded-lg">Vigente</span>
-                        <button type="button" id="btn-open-superadmin-modal" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; font-weight: 900;" class="px-3.5 py-1.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition-transform transform active:scale-95">
-                            <i class="fas fa-sliders-h text-black"></i> Panel Super-Admin
-                        </button>
-                    </div>
-                </div>
                 
-                <!-- CONFIGURACIÓN MULTI-INSTITUCIÓN, LICENCIA Y POP-UP HORIZONTAL -->
-                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-yellow-400">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider"><i class="fas fa-university mr-2 text-yellow-600"></i>Gestión Institucional y Licencias</h3>
-                        <span id="license-status-badge" class="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-800">Licencia Activa</span>
-                    </div>
-
-                    <!-- Selector de Institución -->
-                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4 flex flex-col gap-2">
-                        <label class="text-11px font-bold text-gray-600 uppercase flex justify-between items-center">
-                            <span>Institución Configurada</span>
-                            <span class="text-[10px] text-blue-600 font-semibold">(Cambia según el acceso)</span>
+                <!-- ACCIONES DEL POP-UP VERTICAL DE INICIO (EXCLUSIVO ADMINISTRADOR) -->
+                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-xs font-black text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fas fa-mobile-alt text-purple-600"></i> Pop-up Informativo al Iniciar (Tutorial & Novedades)
+                        </h4>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="inst-popup-active" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            <span class="ml-2 text-xs font-bold text-gray-700" id="label-popup-active">Desactivado</span>
                         </label>
-                        <div class="flex gap-2">
-                            <select id="inst-select" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 bg-white font-medium text-sm focus:outline-none focus:border-blue-500 shadow-sm">
-                                <option value="ramon_munera">I.E. Ramón Múnera Lopera</option>
-                            </select>
-                            <button id="btn-new-inst" title="Registrar Nueva Institución" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-bold text-xs transition-colors shadow flex items-center gap-1">
-                                <i class="fas fa-plus"></i> Nueva
-                            </button>
-                            <button id="btn-del-inst" title="Eliminar Institución Actual" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-2 rounded-lg font-bold text-xs transition-colors">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
                     </div>
-
-                    <!-- Datos Básicos e Identidad Visual -->
-                    <div class="flex flex-col gap-3">
+                    <p class="text-[11px] text-gray-500 mb-3 leading-tight">
+                        Ventana emergente en formato vertical optimizada para celular con anuncios de Canva, videos tutoriales cortos de YouTube o comunicados institucionales.
+                    </p>
+                    
+                    <div class="flex flex-col gap-2.5">
                         <div>
-                            <label class="text-11px font-bold text-gray-500 mb-1 block uppercase">Nombre Oficial de la Institución</label>
-                            <input type="text" id="inst-name-input" placeholder="Ej: Institución Educativa Ramón Múnera Lopera" class="w-full border border-gray-300 rounded-lg px-4 py-2 font-medium text-sm focus:outline-none focus:border-yellow-500">
+                            <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Título del Pop-up</label>
+                            <input type="text" id="inst-popup-title" placeholder="Ej: Video Tutorial: ¿Cómo usar el Gestor Académico?" class="w-full border border-purple-200 rounded-lg px-3 py-2 bg-gray-50 text-xs font-medium focus:outline-none focus:border-purple-500">
                         </div>
-
-                        <div class="flex gap-3 border-t border-b py-3 border-gray-100">
-                            <div class="flex-1">
-                                <label class="text-11px font-bold text-gray-500 mb-1 block uppercase">Color Primario</label>
-                                <input type="color" id="inst-color1" class="w-full h-10 border border-gray-300 rounded cursor-pointer" value="#2563eb">
-                            </div>
-                            <div class="flex-1">
-                                <label class="text-11px font-bold text-gray-500 mb-1 block uppercase">Color Secundario</label>
-                                <input type="color" id="inst-color2" class="w-full h-10 border border-gray-300 rounded cursor-pointer" value="#0ea5e9">
-                            </div>
+                        <div>
+                            <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Enlace Multimedia (URL de YouTube, Canva o Página Web)</label>
+                            <input type="url" id="inst-popup-url" placeholder="https://www.youtube.com/watch?v=... o https://canva.com/..." class="w-full border border-purple-200 rounded-lg px-3 py-2 bg-gray-50 text-xs font-medium font-mono focus:outline-none focus:border-purple-500">
+                            <span class="text-[10px] text-gray-400 mt-0.5 block">Soporta videos de YouTube (se embeben en 16:9), diseños de Canva, imágenes o páginas web.</span>
                         </div>
-
-                        <label class="flex flex-col items-center px-4 py-3 bg-yellow-50 text-yellow-700 rounded-lg border-2 border-dashed border-yellow-300 cursor-pointer hover:bg-yellow-100 transition-colors">
-                            <span class="text-sm font-bold"><i class="fas fa-upload mr-2"></i>Subir Escudo / Logo Institucional (PNG / JPG)</span>
-                            <input type='file' id="inst-logo-input" class="hidden" accept="image/png, image/jpeg, image/jpg" />
-                        </label>
-                        <img id="logo-preview" class="hidden max-h-16 object-contain shadow-sm rounded p-1 mx-auto" />
-
-                        <!-- PROGRAMACIÓN DE VIGENCIA / LICENCIA -->
-                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-1">
-                            <h4 class="text-xs font-black text-blue-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <i class="fas fa-calendar-check text-blue-600"></i> Periodo Programado de Uso (Licencia Contratada)
-                            </h4>
-                            <p class="text-[11px] text-blue-700 mb-3 leading-tight">
-                                Define las fechas autorizadas de uso para esta institución según el paquete adquirido.
-                            </p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                <div>
-                                    <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Fecha de Inicio de Uso</label>
-                                    <input type="date" id="inst-licencia-inicio" class="w-full border border-blue-300 rounded-lg px-3 py-2 bg-white text-xs font-bold text-gray-700">
-                                </div>
-                                <div>
-                                    <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Fecha Límite / Vencimiento</label>
-                                    <input type="date" id="inst-licencia-fin" class="w-full border border-blue-300 rounded-lg px-3 py-2 bg-white text-xs font-bold text-gray-700">
-                                </div>
-                            </div>
+                        <div>
+                            <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Descripción / Mensaje para la Comunidad</label>
+                            <textarea id="inst-popup-desc" rows="2" placeholder="Ej: Estimada comunidad educativa, miren este video explicativo para generar su carnet y registrar asistencia..." class="w-full border border-purple-200 rounded-lg p-2.5 bg-gray-50 text-xs font-medium resize-none focus:outline-none focus:border-purple-500"></textarea>
                         </div>
-
-                        <!-- PROGRAMACIÓN DE POP-UP VERTICAL DE INICIO (OPTIMIZADO PARA CELULAR) -->
-                        <div class="bg-purple-50 border border-purple-200 rounded-xl p-3 mt-1">
-                            <div class="flex items-center justify-between mb-2">
-                                <h4 class="text-xs font-black text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
-                                    <i class="fas fa-mobile-alt text-purple-600"></i> Pop-up Vertical al Iniciar (Móvil / Celular)
-                                </h4>
-                                <label class="inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="inst-popup-active" class="sr-only peer">
-                                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                                    <span class="ml-2 text-xs font-bold text-gray-700" id="label-popup-active">Desactivado</span>
-                                </label>
-                            </div>
-                            <p class="text-[11px] text-purple-700 mb-3 leading-tight">
-                                Ventana emergente en formato vertical optimizada para la navegación en teléfonos móviles (anuncios de Canva, videos tutoriales cortos de YouTube o comunicados).
-                            </p>
-                            
-                            <div class="flex flex-col gap-2.5">
-                                <div>
-                                    <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Título del Pop-up</label>
-                                    <input type="text" id="inst-popup-title" placeholder="Ej: Video Tutorial: ¿Cómo usar el Gestor Académico?" class="w-full border border-purple-300 rounded-lg px-3 py-2 bg-white text-xs font-medium">
-                                </div>
-                                <div>
-                                    <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Enlace (URL de YouTube, Canva o Enlace Web)</label>
-                                    <input type="url" id="inst-popup-url" placeholder="https://www.youtube.com/watch?v=... o https://canva.com/..." class="w-full border border-purple-300 rounded-lg px-3 py-2 bg-white text-xs font-medium font-mono">
-                                    <span class="text-[10px] text-gray-500 mt-0.5 block">Soporta enlaces de videos de YouTube (se embeben en 16:9), diseños de Canva, imágenes o páginas web.</span>
-                                </div>
-                                <div>
-                                    <label class="text-10px font-bold text-gray-600 uppercase block mb-1">Descripción / Mensaje Adicional (Opcional)</label>
-                                    <textarea id="inst-popup-desc" rows="2" placeholder="Ej: Estimada comunidad educativa, miren este video corto explicativo de cómo generar su carnet y registrar asistencia..." class="w-full border border-purple-300 rounded-lg p-2.5 bg-white text-xs font-medium resize-none"></textarea>
-                                </div>
-                                <button type="button" id="btn-preview-popup" class="bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 self-start">
-                                    <i class="fas fa-eye"></i> Vista Previa del Pop-up
-                                </button>
-                            </div>
-                        </div>
-
-                        <button id="btn-save-settings" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-3 rounded-xl font-black shadow-md mt-2 transition-transform transform active:scale-95 flex items-center justify-center gap-2">
-                            <i class="fas fa-save"></i> Guardar y Aplicar a la Institución
-                        </button>
-
-                        <div class="text-center pt-2 text-[11px] text-gray-500 font-medium">
-                            Desarrollada por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-bold hover:underline">www.espatodo.com</a>
+                        <div class="flex flex-col sm:flex-row gap-2 mt-1">
+                            <button type="button" id="btn-preview-popup" class="bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold py-2.5 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5">
+                                <i class="fas fa-eye"></i> Vista Previa del Pop-up
+                            </button>
+                            <button type="button" id="btn-save-settings" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-black py-2.5 px-4 rounded-lg text-xs transition-colors shadow flex items-center justify-center gap-1.5 active:scale-95">
+                                <i class="fas fa-save"></i> Guardar Configuración de Pop-up
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- BROWSER DE BASES DE DATOS (NUEVO LECTOR DINÁMICO POR ENCABEZADOS) -->
+                <!-- BROWSER DE BASES DE DATOS Y PLANTILLAS OFICIALES -->
                 <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Bases de Datos (Excel Nuevo & Antiguo)</h3>
-                        <button id="btn-download-sample-excel" class="text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 font-bold px-3 py-1.5 rounded-lg border border-blue-200 transition-colors flex items-center">
-                            <i class="fas fa-file-excel mr-1.5 text-green-600"></i> Descargar Ejemplo Excel Nuevo
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                        <h3 class="text-xs font-black text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fas fa-database text-blue-600"></i> Bases de Datos & Plantillas Oficiales
+                        </h3>
+                    </div>
+                    
+                    <!-- 4 Botones Claros de Descarga de Plantillas (Alumnos, Personal, Inventario, PAE) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                        <button type="button" id="btn-download-sample-excel" class="py-2.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 text-center">
+                            <i class="fas fa-file-excel text-green-600 text-sm"></i>
+                            <span>Plantilla Alumnos</span>
+                        </button>
+                        <button type="button" id="btn-download-sample-staff" class="py-2.5 px-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 text-center">
+                            <i class="fas fa-id-badge text-purple-600 text-sm"></i>
+                            <span>Plantilla Personal</span>
+                        </button>
+                        <button type="button" id="btn-download-sample-inventory" class="py-2.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 text-center">
+                            <i class="fas fa-boxes text-amber-600 text-sm"></i>
+                            <span>Plantilla Inventario</span>
+                        </button>
+                        <button type="button" id="btn-download-sample-pae" class="py-2.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 text-center">
+                            <i class="fas fa-utensils text-emerald-600 text-sm"></i>
+                            <span>Plantilla PAE</span>
                         </button>
                     </div>
-                    <p class="text-xs text-gray-500 mb-3">Soporta detección automática de columnas: <code>N°</code>, <code>MATRÍCULA</code>, <code>TIPO DOC.</code>, <code>DOCUMENTO</code>, <code>ESTUDIANTE</code> (o <code>APELLIDOS</code> / <code>NOMBRES</code>) y lectura multi-hoja por grupos.</p>
                     
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
                         <label class="flex flex-col relative overflow-hidden items-center p-3 bg-blue-50 text-blue-700 rounded-xl border border-blue-200 cursor-pointer text-center hover:bg-blue-100 transition-colors">
@@ -834,7 +766,7 @@
                             </div>
                         </div>
                         <label class="flex flex-col relative overflow-hidden items-center p-3 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-200 cursor-pointer text-center hover:bg-yellow-100 transition-colors">
-                            <i class="fas fa-boxes text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir Elementos</span><span id="count-items" class="text-10px text-yellow-600 font-bold mt-1 z-10">Cargando...</span>
+                            <i class="fas fa-boxes text-xl mb-1 z-10"></i><span class="text-11px font-bold z-10">Subir Inventario</span><span id="count-items" class="text-10px text-yellow-600 font-bold mt-1 z-10">Cargando...</span>
                             <div id="progress-items" class="absolute bottom-0 left-0 h-1 bg-yellow-500 transition-all duration-300 w-0"></div><input type='file' id="excel-items" class="hidden" accept=".xlsx, .xls" />
                         </label>
                         <label class="flex flex-col relative overflow-hidden items-center p-3 bg-green-50 text-green-700 rounded-xl border border-green-200 cursor-pointer text-center hover:bg-green-100 transition-colors">
@@ -862,44 +794,91 @@
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500">
-                    <h3 class="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider"><i class="fas fa-user-shield mr-2"></i>Permisos por Rol</h3>
+                <div id="card-admin-roles-config" class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500">
+                    <h3 class="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider"><i class="fas fa-user-shield mr-2"></i>Permisos por Rol (Exclusivo Plan Institucional)</h3>
                     <div id="roles-config-container" class="flex flex-col gap-3"><div class="text-center py-2 text-sm text-gray-400">Cargando permisos...</div></div>
                     <button id="btn-save-roles" class="mt-4 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold shadow-md w-full"><i class="fas fa-save mr-2"></i>Guardar Permisos</button>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm p-5 border-2 border-indigo-100">
-                    <h3 class="text-xs font-bold text-indigo-700 mb-3 uppercase tracking-wider"><i class="fas fa-qrcode mr-2"></i>Generador Códigos QR</h3>
-                    <h4 class="text-11px font-bold text-gray-500 mb-2 uppercase">Impresión Masiva PDF</h4>
-                    <select id="qr-group" class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-gray-50 font-medium text-sm"></select>
-                    <div class="flex flex-col gap-2">
-                        <button id="btn-qr-print" class="w-full bg-indigo-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-md text-sm"><i class="fas fa-print mr-2"></i> Imprimir QR Alumnos</button>
-                        <button id="btn-qr-items" class="w-full bg-orange-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-orange-700 shadow-md text-sm"><i class="fas fa-box-open mr-2"></i> Imprimir QR Elementos (Inventario)</button>
+                <div class="bg-white rounded-xl shadow-sm p-5 border-2 border-indigo-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-black text-indigo-900 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fas fa-qrcode text-indigo-600 text-base"></i> BUSCAR Y DESCARGAR
+                        </h3>
+                        <span class="text-[10px] font-black bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full border border-indigo-200">Adaptable a Cualquier Impresora</span>
                     </div>
+                    <p class="text-xs text-gray-500 mb-4">
+                        Descarga los códigos en imagen PNG de alta calidad o PDF. No importa la impresora: puedes descargarlos y ajustarlos en una hoja grande, pequeña, varias por página o térmica.
+                    </p>
                     
-                    <div class="mt-5 pt-4 border-t border-indigo-100">
-                        <h4 class="text-11px font-bold text-gray-500 mb-2 uppercase">Búsqueda Individual (MX10 / PNG)</h4>
-                        <div class="flex gap-2 mb-3">
-                            <input type="text" id="qr-search-input" placeholder="Documento o Matrícula" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
-                            <button id="btn-qr-search" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-200 transition-colors font-bold"><i class="fas fa-search"></i></button>
+                    <!-- Búsqueda y Descarga Individual (Estudiante, Inventario o Personal) -->
+                    <div class="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-2xl border-2 border-indigo-200 mb-4">
+                        <h4 class="text-xs font-black text-indigo-950 mb-2 uppercase flex items-center justify-between">
+                            <span><i class="fas fa-search mr-1.5 text-indigo-600"></i> Buscar y Descargar Código Individual</span>
+                            <span class="text-[10px] text-indigo-600 font-bold">Plaqueta / Carnet / Sticker</span>
+                        </h4>
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" id="qr-search-input" placeholder="Ingresa Documento, Matrícula o Código de Elemento..." class="flex-1 border-2 border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-indigo-500 bg-white">
+                            <button id="btn-qr-search" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors font-black text-xs flex items-center gap-1 shadow-sm">
+                                <i class="fas fa-search"></i> Buscar
+                            </button>
                         </div>
                         
-                        <div id="qr-individual-result" class="hidden flex flex-col items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm mt-2">
-                            <div id="qr-ind-name" class="font-black text-sm text-center mb-2 uppercase leading-tight text-gray-800 w-full break-words">NOMBRE</div>
-                            <div id="qr-ind-img" class="w-36 h-36 mb-2 border border-gray-100 rounded flex items-center justify-center bg-white"></div>
-                            <div id="qr-ind-id" class="text-sm font-black bg-gray-100 px-4 py-1 rounded border-t border-b border-gray-300 mb-1 tracking-widest w-full text-center">ID</div>
-                            <div id="qr-ind-group" class="text-11px text-gray-600 uppercase font-bold mb-4">GRUPO</div>
-                            <div class="flex gap-2 w-full">
-                                <button id="btn-qr-ind-print" class="flex-1 bg-gray-800 text-white py-2 rounded-lg text-11px font-bold hover:bg-black shadow"><i class="fas fa-print mb-1 block text-lg"></i> Imprimir (MX10)</button>
+                        <div id="qr-individual-result" class="hidden flex flex-col items-center bg-white p-4 rounded-2xl border-2 border-indigo-300 shadow-md mt-3">
+                            <div id="qr-ind-name" class="font-black text-base text-center mb-1 uppercase leading-tight text-gray-900 w-full break-words">NOMBRE</div>
+                            <div id="qr-ind-desc" class="text-xs text-gray-600 text-center mb-2 font-medium"></div>
+                            <div id="qr-ind-img" class="w-40 h-40 mb-2 border-2 border-gray-200 rounded-xl flex items-center justify-center bg-white p-2 shadow-inner"></div>
+                            <div id="qr-ind-id" class="text-xs font-black bg-gray-100 text-gray-900 px-4 py-1.5 rounded-lg border border-gray-300 mb-1 tracking-wider w-full text-center font-mono">ID</div>
+                            <div id="qr-ind-group" class="text-xs text-indigo-800 uppercase font-black mb-3">GRUPO / CATEGORÍA</div>
+                            
+                            <!-- Botones de Descarga Universales -->
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full pt-2 border-t border-gray-200">
+                                <button type="button" id="btn-qr-ind-download-png" class="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow transition-transform active:scale-95 flex items-center justify-center gap-1.5">
+                                    <i class="fas fa-download text-yellow-300"></i> Descargar Imagen PNG
+                                </button>
+                                <button type="button" id="btn-qr-ind-download-pdf" class="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xs shadow transition-transform active:scale-95 flex items-center justify-center gap-1.5">
+                                    <i class="fas fa-file-pdf"></i> Descargar Ficha PDF
+                                </button>
+                                <button type="button" id="btn-qr-ind-print" class="py-2.5 px-2 bg-gray-900 hover:bg-black text-white font-black rounded-xl text-xs shadow transition-transform active:scale-95 flex items-center justify-center gap-1.5">
+                                    <i class="fas fa-print text-amber-400"></i> Imprimir Directo
+                                </button>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="bg-red-50 rounded-xl shadow-sm p-5 border-2 border-red-200 mt-4">
-                    <h3 class="text-xs font-bold text-red-700 mb-2 uppercase tracking-wider"><i class="fas fa-skull-crossbones mr-2"></i>Zona de Peligro (Formatear)</h3>
-                    <p class="text-11px text-red-600 mb-3 font-medium">Borrará todos los datos de la base de datos (Estudiantes, Docentes y Registros). ¡No se puede deshacer!</p>
-                    <button id="btn-factory-reset" class="w-full bg-red-600 text-white px-3 py-3 rounded-lg font-bold hover:bg-red-700 shadow-md text-sm"><i class="fas fa-trash-alt mr-2"></i>Formatear Sistema</button>
+
+                    <!-- Generación y Descarga por Grupos de Estudiantes -->
+                    <div class="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 mb-3">
+                        <h4 class="text-11px font-black text-indigo-900 mb-2 uppercase flex items-center justify-between">
+                            <span><i class="fas fa-users mr-1.5"></i> Descargar / Imprimir por Grupos de Estudiantes</span>
+                            <span class="text-[10px] text-indigo-600 font-normal">Carnets / Hoja de Stickers</span>
+                        </h4>
+                        <div class="flex gap-2">
+                            <select id="qr-group" class="flex-1 border border-indigo-200 rounded-lg px-3 py-2 bg-white font-medium text-xs focus:outline-none focus:border-indigo-500"></select>
+                            <button id="btn-qr-print" class="bg-indigo-600 text-white px-3.5 py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-sm text-xs flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="fas fa-print"></i> Imprimir Grupo
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Generación y Descarga por Categorías de Inventario -->
+                    <div class="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200">
+                        <h4 class="text-11px font-black text-amber-900 mb-2 uppercase flex items-center justify-between">
+                            <span><i class="fas fa-boxes mr-1.5"></i> Descargar / Imprimir Plaquetas de Inventario</span>
+                            <span class="text-[10px] text-amber-700 font-normal">Plaquetas de Elementos</span>
+                        </h4>
+                        <div class="flex gap-2">
+                            <select id="qr-inventory-category" class="flex-1 border border-amber-300 rounded-lg px-3 py-2 bg-white font-medium text-xs focus:outline-none focus:border-amber-500">
+                                <option value="todos">Todo el Inventario (Todas las Categorías)</option>
+                                <option value="DEPORTES">Hoja 1: DEPORTES</option>
+                                <option value="SISTEMAS">Hoja 2: SISTEMAS</option>
+                                <option value="BIBLIOTECA">Hoja 3: BIBLIOTECA</option>
+                                <option value="OTROS">Hoja 4: OTROS</option>
+                            </select>
+                            <button id="btn-qr-items" class="bg-amber-600 text-white px-3.5 py-2 rounded-lg font-bold hover:bg-amber-700 shadow-sm text-xs flex items-center gap-1.5 whitespace-nowrap">
+                                <i class="fas fa-tag"></i> Imprimir Plaquetas
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <button id="btn-admin-logout" class="text-gray-500 text-sm font-bold mt-4 py-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50"><i class="fas fa-arrow-left mr-2"></i>Volver al Escáner</button>
@@ -1029,13 +1008,16 @@
             </p>
             
             <div class="flex flex-col gap-2.5 justify-center mb-5">
-                <button id="btn-license-admin-access" class="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 px-5 rounded-xl text-xs sm:text-sm shadow transition-colors flex items-center justify-center gap-2">
-                    <i class="fas fa-key text-yellow-400"></i> Acceso Administrador (Actualizar Fechas de Licencia)
-                </button>
+                <a href="https://wa.me/?text=Hola%2C%20necesito%20renovar%20la%20licencia%20del%20Gestor%20Acad%C3%A9mico" target="_blank" rel="noopener noreferrer" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-5 rounded-xl text-xs sm:text-sm shadow transition-colors flex items-center justify-center gap-2">
+                    <i class="fab fa-whatsapp text-lg"></i> Contactar Soporte Comercial por WhatsApp
+                </a>
             </div>
             
-            <div class="pt-3 border-t border-gray-200 text-xs text-gray-600 font-medium">
-                Desarrollada por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-black underline">www.espatodo.com</a>
+            <div class="pt-3 border-t border-gray-200 text-xs text-gray-500 font-medium flex items-center justify-center gap-1.5">
+                <button type="button" class="secret-crown-superadmin text-gray-300 hover:text-amber-500 transition-colors p-0.5 rounded cursor-pointer" title="Sistema" style="outline: none; background: transparent; border: none;">
+                    <i class="fas fa-crown text-[10px]"></i>
+                </button>
+                <span>Desarrollada por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-black underline">www.espatodo.com</a></span>
             </div>
         </div>
     </div>
@@ -1071,13 +1053,13 @@
                 <a href="https://wa.me/?text=Hola%2C%20estoy%20interesado%20en%20adquirir%20la%20licencia%20del%20Gestor%20Acad%C3%A9mico%20para%20mi%20colegio" target="_blank" rel="noopener noreferrer" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-5 rounded-xl text-xs sm:text-sm shadow transition-colors flex items-center justify-center gap-2">
                     <i class="fab fa-whatsapp text-lg"></i> Contactar por WhatsApp
                 </a>
-                <button id="btn-trial-admin-access" class="w-full text-gray-600 hover:text-black font-bold py-2 text-xs transition-colors flex items-center justify-center gap-1.5">
-                    <i class="fas fa-key text-gray-400"></i> ¿Ya compraste tu licencia? Ingresar Clave / Admin
-                </button>
             </div>
             
-            <div class="pt-3 border-t border-gray-200 text-xs text-gray-600 font-medium">
-                Desarrollada por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-black underline">www.espatodo.com</a>
+            <div class="pt-3 border-t border-gray-200 text-xs text-gray-500 font-medium flex items-center justify-center gap-1.5">
+                <button type="button" class="secret-crown-superadmin text-gray-300 hover:text-amber-500 transition-colors p-0.5 rounded cursor-pointer" title="Sistema" style="outline: none; background: transparent; border: none;">
+                    <i class="fas fa-crown text-[10px]"></i>
+                </button>
+                <span>Desarrollada por <a href="https://www.espatodo.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-black underline">www.espatodo.com</a></span>
             </div>
         </div>
     </div>
@@ -1158,6 +1140,59 @@
             <!-- Contenido scrollable -->
             <div class="p-4 sm:p-6 overflow-y-auto flex flex-col gap-5 text-xs sm:text-sm">
                 
+                <!-- GESTIÓN MULTI-INSTITUCIÓN Y CLIENTES INDIVIDUALES (EXCLUSIVO SUPERADMINISTRADOR) -->
+                <div class="bg-gray-800/80 border-2 border-amber-500/50 rounded-2xl p-4 sm:p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-university text-amber-400 text-base"></i>
+                            <h3 class="font-black text-sm uppercase tracking-wider text-white">Institución o Persona Adquiriente (Individualizada)</h3>
+                        </div>
+                        <span class="text-[10px] text-amber-300 font-bold bg-amber-950/80 border border-amber-500/40 px-2.5 py-1 rounded-full uppercase">Configuración Individual</span>
+                    </div>
+                    
+                    <!-- Selector de Institución / Cliente -->
+                    <div class="bg-gray-900/90 border border-gray-700 rounded-xl p-3 mb-3">
+                        <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1.5 flex items-center justify-between">
+                            <span>Seleccionar Institución / Docente Titular</span>
+                            <span class="text-[10px] text-amber-400 font-medium">Cada cliente tiene su propia vigencia y módulos</span>
+                        </label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <select id="sa-inst-select" class="flex-1 bg-black border border-gray-600 rounded-xl px-3 py-2 text-white font-medium text-xs sm:text-sm focus:outline-none focus:border-amber-400 shadow-inner">
+                                <option value="ramon_munera">I.E. Ramón Múnera Lopera</option>
+                            </select>
+                            <button type="button" id="btn-sa-new-inst" title="Registrar Nueva Institución o Cliente" class="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-gray-950 px-3.5 py-2 rounded-xl font-black text-xs transition-colors shadow flex items-center justify-center gap-1.5 whitespace-nowrap">
+                                <i class="fas fa-plus"></i> Nueva Institución / Docente
+                            </button>
+                            <button type="button" id="btn-sa-del-inst" title="Eliminar Institución Actual" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/60 px-3 py-2 rounded-xl font-bold text-xs transition-colors whitespace-nowrap">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Datos Básicos e Identidad Visual de la Institución/Persona -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                        <div class="sm:col-span-3">
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Nombre Oficial de la Institución o Docente</label>
+                            <input type="text" id="sa-inst-name-input" placeholder="Ej: Institución Educativa Ramón Múnera Lopera o Lic. Mario Ruiz" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3.5 py-2 text-white font-medium text-xs focus:border-amber-400 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Color Primario</label>
+                            <input type="color" id="sa-inst-color1" class="w-full h-9 bg-gray-900 border border-gray-700 rounded-xl cursor-pointer" value="#2563eb">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Color Secundario</label>
+                            <input type="color" id="sa-inst-color2" class="w-full h-9 bg-gray-900 border border-gray-700 rounded-xl cursor-pointer" value="#0ea5e9">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Escudo / Logo Oficial</label>
+                            <label class="flex items-center justify-center px-3 py-2 bg-gray-900 hover:bg-gray-800 text-amber-300 border border-gray-700 rounded-xl cursor-pointer text-xs font-bold transition-colors">
+                                <i class="fas fa-upload mr-1.5"></i> Subir Escudo (PNG/JPG)
+                                <input type="file" id="sa-inst-logo-input" class="hidden" accept="image/png, image/jpeg, image/jpg">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- 1. TIPO DE PLAN / MODALIDAD DE COMPRA -->
                 <div class="bg-gray-800/80 border border-gray-700/80 rounded-2xl p-4 sm:p-5">
                     <div class="flex items-center justify-between mb-3">
@@ -1222,44 +1257,155 @@
                         </div>
                     </div>
 
-                    <!-- Datos del Comprador y Control de Usuario -->
-                    <div class="mt-4 pt-4 border-t border-gray-700/60 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Nombre Titular o Colegio</label>
-                            <input type="text" id="sa-titular-nombre" placeholder="Ej: Lic. Mario Ruiz o I.E. San Juan" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-medium focus:border-amber-400 focus:outline-none">
+                    <!-- Datos del Comprador, Credenciales de Acceso a la App y Rol del Usuario -->
+                    <div class="mt-4 pt-4 border-t border-gray-700/60 space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                            <span class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                                <i class="fas fa-user-shield"></i> Credenciales de Acceso a la Aplicación y Rol Asignado
+                            </span>
+                            <span class="text-[10px] text-gray-400">Permite al usuario ingresar desde la pantalla de login</span>
                         </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">
-                                Documento Docente Titular
-                                <span class="text-[10px] text-amber-400 font-bold">(Restricción a 1 usuario)</span>
-                            </label>
-                            <input type="text" id="sa-titular-doc" placeholder="Cédula del docente autorizado" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-mono font-medium focus:border-amber-400 focus:outline-none">
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Nombre Completo / Titular</label>
+                                <input type="text" id="sa-titular-nombre" placeholder="Ej: Lic. Mario Ruiz o IE Central" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-medium focus:border-amber-400 focus:outline-none text-xs">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">
+                                    Documento / Usuario <span class="text-amber-400 font-bold">*</span>
+                                </label>
+                                <input type="text" id="sa-titular-doc" placeholder="Cédula para iniciar sesión" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:border-amber-400 focus:outline-none text-xs">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">
+                                    Contraseña en la App <span class="text-emerald-400 font-bold">*</span>
+                                </label>
+                                <input type="text" id="sa-titular-clave" placeholder="Contraseña (ej: 1234)" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:border-amber-400 focus:outline-none text-xs">
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Rol en la Aplicación</label>
+                                <select id="sa-titular-rol" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-bold focus:border-amber-400 focus:outline-none text-xs cursor-pointer">
+                                    <option value="docente">Docente Titular (Asistencia, Notas, Planilla)</option>
+                                    <option value="coordinador">Coordinador Académico (Supervisión, Novedades)</option>
+                                    <option value="vigilante">Seguridad / Portería (Control de Puerta)</option>
+                                    <option value="admin">Administrador General de Sede</option>
+                                </select>
+                            </div>
                         </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Contacto WhatsApp / Email</label>
-                            <input type="text" id="sa-titular-contacto" placeholder="+57 300 1234567" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-medium focus:border-amber-400 focus:outline-none">
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Contacto WhatsApp / Teléfono</label>
+                                <input type="text" id="sa-titular-contacto" placeholder="+57 300 1234567" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-white font-medium focus:border-amber-400 focus:outline-none text-xs">
+                            </div>
+                            <div class="bg-gray-900/80 border border-emerald-500/40 rounded-xl p-2.5 flex items-center gap-2">
+                                <i class="fas fa-check-circle text-emerald-400 text-lg flex-shrink-0"></i>
+                                <p class="text-[11px] text-gray-200 leading-tight">
+                                    <b>Acceso Garantizado:</b> Al guardar, se crea/actualiza el usuario en la nómina con esta cédula, contraseña y rol. Al ingresar en la pantalla de inicio de sesión, accederá con sus módulos habilitados.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 2. CONTROL DE FECHAS DE ACCESO (VIGENCIA DE LA LICENCIA) -->
+                <!-- 2. MÓDULOS HABILITADOS EN LA LICENCIA (PERSONALIZABLE POR DOCENTE O COLEGIO) -->
+                <div class="bg-gray-800/80 border border-gray-700/80 rounded-2xl p-4 sm:p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-cubes text-amber-400 text-base"></i>
+                            <h3 class="font-black text-sm uppercase tracking-wider text-white">2. Módulos Habilitados en la Licencia (1 a 7 Módulos)</h3>
+                        </div>
+                        <span id="sa-enabled-modules-count" class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">7 Módulos Activos</span>
+                    </div>
+                    <p class="text-xs text-gray-300 mb-3 leading-relaxed">
+                        <b>Personalización total desde Superadministrador:</b> Determina si le activas 1, 4 o todos los módulos según lo adquirido. Si lo compra un solo docente (por ejemplo de Educación Física o para Asistencia y Notas), desmarca el resto para que no se sature su pantalla con módulos que no necesita.
+                    </p>
+
+                    <!-- Atajos de Selección Rápida de Módulos -->
+                    <div class="flex flex-wrap gap-2 mb-3 items-center">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase">Configuración rápida:</span>
+                        <button type="button" id="btn-sa-modules-all" class="bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">
+                            <i class="fas fa-check-double text-emerald-400 mr-1"></i> Todos (Institucional)
+                        </button>
+                        <button type="button" id="btn-sa-modules-docente-basic" class="bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">
+                            <i class="fas fa-chalkboard-teacher text-blue-400 mr-1"></i> Básico (Asistencia + Notas)
+                        </button>
+                        <button type="button" id="btn-sa-modules-ef-only" class="bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">
+                            <i class="fas fa-running text-purple-400 mr-1"></i> Solo Ed. Física
+                        </button>
+                        <button type="button" id="btn-sa-modules-porteria-only" class="bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">
+                            <i class="fas fa-door-open text-amber-400 mr-1"></i> Solo Salidas / Portería
+                        </button>
+                    </div>
+
+                    <!-- Grilla de Checkboxes de Módulos -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5" id="sa-modules-checkboxes-container">
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-emerald-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="asistencia" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-user-check text-emerald-400"></i> Asistencia</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-blue-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="evaluacion" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-star text-blue-400"></i> Evaluar (Notas)</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-gray-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="salida" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-door-open text-gray-300"></i> Salidas</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-yellow-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="prestamo" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-basketball-ball text-yellow-400"></i> Préstamos</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-blue-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="pae" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-utensils text-blue-400"></i> PAE</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-indigo-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="clase_ef" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-running text-indigo-400"></i> Ed. Física</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-900 border border-gray-700 hover:border-red-500 cursor-pointer transition-all select-none">
+                            <input type="checkbox" class="sa-module-toggle rounded bg-gray-800 border-gray-600 text-amber-500 focus:ring-0" value="novedad" checked>
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fas fa-exclamation-triangle text-red-400"></i> Novedades</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. CONTROL DE FECHAS DE ACCESO (VIGENCIA DE LA LICENCIA) -->
                 <div class="bg-gray-800/80 border border-gray-700/80 rounded-2xl p-4 sm:p-5">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-calendar-alt text-amber-400 text-base"></i>
-                            <h3 class="font-black text-sm uppercase tracking-wider text-white">2. Fechas de Acceso & Vigencia de la Licencia</h3>
+                            <h3 class="font-black text-sm uppercase tracking-wider text-white">3. Fechas de Acceso & Vigencia de la Licencia</h3>
                         </div>
                         <span id="sa-license-countdown" class="text-xs font-black px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Activa</span>
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Fecha de Inicio de Acceso</label>
-                            <input type="date" id="sa-licencia-inicio" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono font-bold focus:border-amber-400 focus:outline-none">
+                        <div id="sa-date-box-inicio" class="cursor-pointer group">
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1 flex items-center justify-between">
+                                <span class="flex items-center gap-1.5"><i class="fas fa-calendar-plus text-amber-400"></i> Fecha de Inicio de Acceso</span>
+                                <span class="text-[10px] text-amber-400 group-hover:underline">Abrir calendario</span>
+                            </label>
+                            <div class="relative flex items-center bg-gray-900 border border-gray-700 group-hover:border-amber-400 rounded-xl overflow-hidden transition-colors shadow-inner">
+                                <input type="date" id="sa-licencia-inicio" class="sa-date-calendar-input w-full bg-transparent px-3.5 py-2.5 text-white font-mono font-bold focus:outline-none cursor-pointer">
+                                <button type="button" id="btn-trigger-cal-inicio" title="Hacer clic para abrir calendario" class="px-3 py-2.5 text-amber-400 hover:text-white transition-colors bg-gray-800/80 border-l border-gray-700 flex items-center justify-center">
+                                    <i class="fas fa-calendar-alt text-sm"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Fecha Límite / Vencimiento</label>
-                            <input type="date" id="sa-licencia-fin" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white font-mono font-bold focus:border-amber-400 focus:outline-none">
+                        <div id="sa-date-box-fin" class="cursor-pointer group">
+                            <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1 flex items-center justify-between">
+                                <span class="flex items-center gap-1.5"><i class="fas fa-calendar-check text-emerald-400"></i> Fecha Límite / Vencimiento</span>
+                                <span class="text-[10px] text-emerald-400 group-hover:underline">Abrir calendario</span>
+                            </label>
+                            <div class="relative flex items-center bg-gray-900 border border-gray-700 group-hover:border-amber-400 rounded-xl overflow-hidden transition-colors shadow-inner">
+                                <input type="date" id="sa-licencia-fin" class="sa-date-calendar-input w-full bg-transparent px-3.5 py-2.5 text-white font-mono font-bold focus:outline-none cursor-pointer">
+                                <button type="button" id="btn-trigger-cal-fin" title="Hacer clic para abrir calendario" class="px-3 py-2.5 text-emerald-400 hover:text-white transition-colors bg-gray-800/80 border-l border-gray-700 flex items-center justify-center">
+                                    <i class="fas fa-calendar-alt text-sm"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1275,17 +1421,17 @@
                     </div>
                 </div>
 
-                <!-- 3. CONFIGURACIÓN DE PERMISOS POR ROL -->
+                <!-- 4. CONFIGURACIÓN DE PERMISOS POR ROL -->
                 <div class="bg-gray-800/80 border border-gray-700/80 rounded-2xl p-4 sm:p-5">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-user-lock text-amber-400 text-base"></i>
-                            <h3 class="font-black text-sm uppercase tracking-wider text-white">3. Matriz de Permisos por Rol</h3>
+                            <h3 class="font-black text-sm uppercase tracking-wider text-white">4. Matriz de Permisos por Rol</h3>
                         </div>
                         <span class="text-[10px] text-amber-300 font-bold bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded">Configuración Dinámica</span>
                     </div>
                     <p class="text-xs text-gray-400 mb-4 leading-relaxed">
-                        Controla qué módulos y vistas tiene habilitado cada rol (Docente, Coordinador, Administrador, Vigilante). En Plan Docente, las opciones institucionales de nómina se deshabilitan.
+                        Controla qué módulos y vistas tiene habilitado cada rol del colegio (Docente, Coordinador, Vigilante). En Plan Docente, las opciones institucionales de nómina se deshabilitan.
                     </p>
 
                     <div id="sa-roles-matrix-container" class="space-y-3">
@@ -1293,18 +1439,71 @@
                     </div>
                 </div>
 
-                <!-- 4. SEGURIDAD DE SUPER-ADMINISTRADOR -->
-                <div class="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <!-- 5. FORMATEAR EL SISTEMA (EXCLUSIVO SUPER-ADMINISTRADOR CON LISTA DESPLEGABLE) -->
+                <div class="bg-red-950/30 border-2 border-red-700/60 rounded-2xl p-4 sm:p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-exclamation-triangle text-red-400 text-base"></i>
+                            <h3 class="font-black text-sm uppercase tracking-wider text-red-200">5. Formatear el Sistema (Borrado Seguro)</h3>
+                        </div>
+                        <span class="text-[10px] text-red-300 font-black bg-red-900/60 border border-red-500/40 px-2.5 py-0.5 rounded-full uppercase">Peligro / Irreversible</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3 leading-relaxed">
+                        <b>Solo Superadministrador:</b> Selecciona en la lista desplegable la institución o cliente específico que deseas formatear o limpiar. Ningún administrador general tiene acceso a esta función.
+                    </p>
+
+                    <!-- Lista desplegable según sea la institución o personas que adquirieron -->
+                    <div class="bg-gray-900/90 border border-red-900/50 rounded-xl p-3 mb-3">
+                        <label class="text-[11px] font-bold text-red-300 uppercase block mb-1.5 flex items-center justify-between">
+                            <span class="flex items-center gap-1.5"><i class="fas fa-filter text-red-400"></i> Seleccionar Institución o Titular a Formatear:</span>
+                            <span class="text-[10px] text-gray-400">Afecta solo a la entidad elegida</span>
+                        </label>
+                        <select id="sa-format-target-select" class="w-full bg-black border border-red-800 text-white rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-red-500 shadow-inner">
+                            <option value="current">Institución / Titular Actual Seleccionado</option>
+                        </select>
+                    </div>
+
+                    <!-- Botones de Acción de Formateo -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button type="button" id="btn-sa-format-students" class="p-2.5 bg-gray-900 hover:bg-red-900/60 text-red-200 border border-red-800/60 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all">
+                            <i class="fas fa-user-graduate text-sm text-red-400"></i>
+                            <span>Borrar Alumnos</span>
+                        </button>
+                        <button type="button" id="btn-sa-format-staff" class="p-2.5 bg-gray-900 hover:bg-red-900/60 text-red-200 border border-red-800/60 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all">
+                            <i class="fas fa-chalkboard-teacher text-sm text-red-400"></i>
+                            <span>Borrar Personal</span>
+                        </button>
+                        <button type="button" id="btn-sa-format-inventory" class="p-2.5 bg-gray-900 hover:bg-red-900/60 text-red-200 border border-red-800/60 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all">
+                            <i class="fas fa-boxes text-sm text-red-400"></i>
+                            <span>Borrar Inventario</span>
+                        </button>
+                        <button type="button" id="btn-sa-format-records" class="p-2.5 bg-gray-900 hover:bg-red-900/60 text-red-200 border border-red-800/60 rounded-xl font-bold text-[11px] flex flex-col items-center justify-center gap-1 transition-all">
+                            <i class="fas fa-history text-sm text-red-400"></i>
+                            <span>Borrar Registros</span>
+                        </button>
+                    </div>
+                    <button type="button" id="btn-sa-format-full" class="mt-2.5 w-full bg-red-600 hover:bg-red-700 text-white font-black py-2.5 px-3 rounded-xl text-xs transition-colors shadow flex items-center justify-center gap-2 active:scale-98">
+                        <i class="fas fa-bomb"></i> Formateo Completo de esta Institución / Titular
+                    </button>
+                </div>
+
+                <!-- 6. SEGURIDAD DE SUPER-ADMINISTRADOR -->
+                <div class="bg-gray-800/50 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
-                        <i class="fas fa-key text-amber-400 text-xl"></i>
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-lg flex-shrink-0">
+                            <i class="fas fa-crown"></i>
+                        </div>
                         <div>
-                            <div class="font-bold text-white text-xs">Clave Maestra de Super-Administrador</div>
-                            <div class="text-[11px] text-gray-400">Permite ingresar al control comercial desde cualquier dispositivo.</div>
+                            <div class="font-bold text-white text-xs flex items-center gap-2">
+                                Clave Maestra de Super-Administrador
+                                <span class="text-[10px] bg-amber-950 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-black">SOLO PANEL COMERCIAL</span>
+                            </div>
+                            <div class="text-[11px] text-gray-400">Esta clave es EXCLUSIVA para ingresar a este panel de superadministrador. (NO es la clave del docente; la clave del docente se define en la Sección 1 de arriba).</div>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <input type="password" id="sa-master-pin" placeholder="Nueva clave" class="bg-gray-900 border border-gray-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono">
-                        <button type="button" id="btn-save-master-pin" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors">Actualizar Clave</button>
+                        <input type="password" id="sa-master-pin" placeholder="Nueva clave maestra" class="bg-gray-900 border border-gray-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono">
+                        <button type="button" id="btn-save-master-pin" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap">Actualizar Clave Maestra</button>
                     </div>
                 </div>
 
@@ -1357,6 +1556,103 @@
                     Entendido, cerrar
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL CREAR NUEVA INSTITUCIÓN / DOCENTE INDIVIDUAL (DIRECTO Y SIN BLOQUEOS) -->
+    <div id="modal-new-institution" class="hidden fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-gray-900 border-2 border-amber-500/60 rounded-3xl shadow-2xl max-w-lg w-full p-6 text-white flex flex-col relative animate-slide-2 max-h-[90vh] overflow-y-auto">
+            <button type="button" id="btn-close-new-inst-x" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl font-bold leading-none p-1">
+                &times;
+            </button>
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-xl shadow flex-shrink-0">
+                    <i class="fas fa-user-plus"></i>
+                </div>
+                <div>
+                    <h3 class="font-black text-base uppercase tracking-wider text-white">Nueva Institución o Docente</h3>
+                    <p class="text-xs text-amber-300/80 font-medium">Crea la entidad y habilita su usuario para ingresar al sistema</p>
+                </div>
+            </div>
+
+            <form id="form-new-institution" class="space-y-3.5">
+                <div>
+                    <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">
+                        Nombre Oficial de la Institución o Docente <span class="text-amber-400">*</span>
+                    </label>
+                    <input type="text" id="modal-new-inst-name" required placeholder="Ej: Lic. Mario Gómez o I.E. Santander" class="w-full bg-black border border-gray-700 rounded-xl px-3.5 py-2 text-white font-bold text-xs focus:border-amber-400 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Modalidad de Compra</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-800 border border-gray-700 hover:border-amber-400 cursor-pointer text-xs">
+                            <input type="radio" name="modal_new_inst_type" value="institucional" checked class="text-amber-500">
+                            <div>
+                                <div class="font-bold text-white">Institucional</div>
+                                <div class="text-[10px] text-gray-400">Colegio (Multi-docente)</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-gray-800 border border-gray-700 hover:border-amber-400 cursor-pointer text-xs">
+                            <input type="radio" name="modal_new_inst_type" value="docente" class="text-amber-500">
+                            <div>
+                                <div class="font-bold text-white">Docente Individual</div>
+                                <div class="text-[10px] text-gray-400">1 Solo Profesor</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Credenciales para Iniciar Sesión en la Aplicación -->
+                <div class="bg-gray-800/80 border border-amber-500/30 rounded-2xl p-3.5 space-y-2.5">
+                    <div class="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                        <i class="fas fa-key"></i> Credenciales de Ingreso a la App
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-300 uppercase block mb-1">
+                                Documento / Cédula (Usuario) <span class="text-amber-400">*</span>
+                            </label>
+                            <input type="text" id="modal-new-inst-doc" required placeholder="Ej: 10203040" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-xs focus:border-amber-400 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-300 uppercase block mb-1">
+                                Contraseña de Acceso <span class="text-emerald-400">*</span>
+                            </label>
+                            <input type="text" id="modal-new-inst-clave" required value="1234" placeholder="Ej: 1234" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-xs focus:border-amber-400 focus:outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-300 uppercase block mb-1">Rol Asignado en la App</label>
+                        <select id="modal-new-inst-rol" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white font-bold text-xs focus:border-amber-400 focus:outline-none cursor-pointer">
+                            <option value="docente">Docente Titular (Asistencia, Evaluaciones, Planilla)</option>
+                            <option value="coordinador">Coordinador Académico (Supervisión y Novedades)</option>
+                            <option value="vigilante">Seguridad / Portería (Control de Puerta)</option>
+                            <option value="admin">Administrador General de la Sede</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Color Principal</label>
+                        <input type="color" id="modal-new-inst-color1" value="#2563eb" class="w-full h-8 bg-gray-800 border border-gray-700 rounded-xl cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-gray-300 uppercase block mb-1">Color Secundario</label>
+                        <input type="color" id="modal-new-inst-color2" value="#0ea5e9" class="w-full h-8 bg-gray-800 border border-gray-700 rounded-xl cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex gap-2">
+                    <button type="button" id="btn-cancel-new-inst" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-2.5 px-4 rounded-xl text-xs transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="btn-submit-new-inst" class="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-gray-950 font-black py-2.5 px-4 rounded-xl text-xs transition-transform transform active:scale-95 shadow flex items-center justify-center gap-1.5">
+                        <i class="fas fa-check"></i> Crear Usuario e IE
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
